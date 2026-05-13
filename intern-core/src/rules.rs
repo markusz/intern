@@ -9,12 +9,29 @@ use crate::model::SlideData;
 /// A concrete edit to apply to a PPTX file. All coordinates are in EMU.
 #[derive(Debug, Clone)]
 pub enum Fix {
-    SetX { slide_idx: usize, element_name: String, x: i64 },
-    SetY { slide_idx: usize, element_name: String, y: i64 },
+    SetX {
+        slide_idx: usize,
+        element_name: String,
+        x: i64,
+    },
+    SetY {
+        slide_idx: usize,
+        element_name: String,
+        y: i64,
+    },
     /// Set X and/or width (cx). `None` means "leave unchanged".
-    SetXW { slide_idx: usize, element_name: String, x: Option<i64>, w: Option<i64> },
+    SetXW {
+        slide_idx: usize,
+        element_name: String,
+        x: Option<i64>,
+        w: Option<i64>,
+    },
     /// Font size in hundredths of a point (e.g. 4400 = 44pt).
-    SetFontSize { slide_idx: usize, element_name: String, size: u32 },
+    SetFontSize {
+        slide_idx: usize,
+        element_name: String,
+        size: u32,
+    },
 }
 
 impl Fix {
@@ -42,16 +59,32 @@ impl fmt::Display for Fix {
         const EPX: f64 = 9525.0;
         let (slide, name) = (self.slide_idx() + 1, self.element_name());
         match self {
-            Fix::SetX { x, .. } => write!(f, "slide {slide} '{name}': set X → {:.1}px", *x as f64 / EPX),
-            Fix::SetY { y, .. } => write!(f, "slide {slide} '{name}': set Y → {:.1}px", *y as f64 / EPX),
+            Fix::SetX { x, .. } => write!(
+                f,
+                "slide {slide} '{name}': set X → {:.1}px",
+                *x as f64 / EPX
+            ),
+            Fix::SetY { y, .. } => write!(
+                f,
+                "slide {slide} '{name}': set Y → {:.1}px",
+                *y as f64 / EPX
+            ),
             Fix::SetXW { x, w, .. } => {
                 let mut parts: Vec<String> = Vec::new();
-                if let Some(x) = x { parts.push(format!("X → {:.1}px", *x as f64 / EPX)); }
-                if let Some(w) = w { parts.push(format!("W → {:.1}px", *w as f64 / EPX)); }
+                if let Some(x) = x {
+                    parts.push(format!("X → {:.1}px", *x as f64 / EPX));
+                }
+                if let Some(w) = w {
+                    parts.push(format!("W → {:.1}px", *w as f64 / EPX));
+                }
                 write!(f, "slide {slide} '{name}': set {}", parts.join(", "))
             }
             Fix::SetFontSize { size, .. } => {
-                write!(f, "slide {slide} '{name}': set font size → {}pt", size / 100)
+                write!(
+                    f,
+                    "slide {slide} '{name}': set font size → {}pt",
+                    size / 100
+                )
             }
         }
     }
@@ -188,31 +221,46 @@ mod tests {
     #[test]
     fn violation_message_column_top_misaligned_display() {
         let m = ViolationMessage::ColumnTopMisaligned { diff_emu: 19_050 };
-        assert_eq!(m.to_string(), "left/right column top edges misaligned by 2.0px");
+        assert_eq!(
+            m.to_string(),
+            "left/right column top edges misaligned by 2.0px"
+        );
     }
 
     #[test]
     fn violation_message_gap_uneven_display() {
-        let m = ViolationMessage::GapUneven { actual_emu: 190_500, expected_emu: 95_250 };
+        let m = ViolationMessage::GapUneven {
+            actual_emu: 190_500,
+            expected_emu: 95_250,
+        };
         assert_eq!(m.to_string(), "gap 20.0px, expected ~10.0px");
     }
 
     #[test]
     fn violation_message_title_y_off_display() {
-        let m = ViolationMessage::TitleYOff { actual_emu: 400_000, expected_emu: 274_638 };
+        let m = ViolationMessage::TitleYOff {
+            actual_emu: 400_000,
+            expected_emu: 274_638,
+        };
         let s = m.to_string();
         assert!(s.contains("title Y"), "{s}");
     }
 
     #[test]
     fn violation_message_title_position_size_display() {
-        let m = ViolationMessage::TitlePositionSize { x_off_emu: Some(95_250), w_off_emu: None };
+        let m = ViolationMessage::TitlePositionSize {
+            x_off_emu: Some(95_250),
+            w_off_emu: None,
+        };
         assert!(m.to_string().contains("X 10.0px off"));
     }
 
     #[test]
     fn violation_message_title_font_size_display() {
-        let m = ViolationMessage::TitleFontSize { actual: 3600, expected: 4400 };
+        let m = ViolationMessage::TitleFontSize {
+            actual: 3600,
+            expected: 4400,
+        };
         assert_eq!(m.to_string(), "title font size 36pt, expected 44pt");
     }
 
@@ -220,13 +268,21 @@ mod tests {
 
     #[test]
     fn fix_set_x_display() {
-        let f = Fix::SetX { slide_idx: 0, element_name: "Box".into(), x: 95_250 };
+        let f = Fix::SetX {
+            slide_idx: 0,
+            element_name: "Box".into(),
+            x: 95_250,
+        };
         assert_eq!(f.to_string(), "slide 1 'Box': set X → 10.0px");
     }
 
     #[test]
     fn fix_set_y_display() {
-        let f = Fix::SetY { slide_idx: 1, element_name: "Title".into(), y: 285_750 };
+        let f = Fix::SetY {
+            slide_idx: 1,
+            element_name: "Title".into(),
+            y: 285_750,
+        };
         assert_eq!(f.to_string(), "slide 2 'Title': set Y → 30.0px");
     }
 
@@ -245,13 +301,21 @@ mod tests {
 
     #[test]
     fn fix_set_font_size_display() {
-        let f = Fix::SetFontSize { slide_idx: 2, element_name: "H".into(), size: 4400 };
+        let f = Fix::SetFontSize {
+            slide_idx: 2,
+            element_name: "H".into(),
+            size: 4400,
+        };
         assert_eq!(f.to_string(), "slide 3 'H': set font size → 44pt");
     }
 
     #[test]
     fn fix_accessors() {
-        let f = Fix::SetX { slide_idx: 3, element_name: "E".into(), x: 0 };
+        let f = Fix::SetX {
+            slide_idx: 3,
+            element_name: "E".into(),
+            x: 0,
+        };
         assert_eq!(f.slide_idx(), 3);
         assert_eq!(f.element_name(), "E");
     }

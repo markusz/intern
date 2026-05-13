@@ -33,7 +33,11 @@ fn run_lint(args: cli::LintArgs, cfg: Config) -> miette::Result<()> {
                 .and_then(|o| o.group_by.as_deref())
                 .map(|s| s == "rule")
                 .unwrap_or(false);
-            if from_cfg { report::GroupBy::Rule } else { report::GroupBy::Slide }
+            if from_cfg {
+                report::GroupBy::Rule
+            } else {
+                report::GroupBy::Slide
+            }
         }
     };
 

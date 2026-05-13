@@ -247,10 +247,7 @@ mod tests {
 
     #[test]
     fn title_x_width_clean() {
-        let slides = vec![
-            title_slide(0, 274_638, None),
-            title_slide(1, 274_638, None),
-        ];
+        let slides = vec![title_slide(0, 274_638, None), title_slide(1, 274_638, None)];
         assert!(TitleXWidthRule.check(&slides, THRESHOLD).is_empty());
     }
 

@@ -66,16 +66,21 @@ impl Rule for ColumnTopEdgeRule {
                 continue;
             };
             // Find the topmost element index in each column so we can name what to fix.
-            let left_top_i = left.iter().copied().min_by_key(|&i| slide.elements[i].rect.y);
-            let right_top_i = right.iter().copied().min_by_key(|&i| slide.elements[i].rect.y);
+            let left_top_i = left
+                .iter()
+                .copied()
+                .min_by_key(|&i| slide.elements[i].rect.y);
+            let right_top_i = right
+                .iter()
+                .copied()
+                .min_by_key(|&i| slide.elements[i].rect.y);
             if let (Some(li), Some(ri)) = (left_top_i, right_top_i) {
                 let lt = slide.elements[li].rect.y;
                 let rt = slide.elements[ri].rect.y;
                 let diff = (lt - rt).abs();
                 if diff > threshold {
                     // Snap the lagging column's first element up to match the earlier one.
-                    let (target_i, target_y) =
-                        if lt > rt { (li, rt) } else { (ri, lt) };
+                    let (target_i, target_y) = if lt > rt { (li, rt) } else { (ri, lt) };
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
@@ -145,13 +150,21 @@ mod tests {
         SlideElement {
             name: name.to_owned(),
             kind: ElementKind::TextBox,
-            rect: Rect { x, y, w: 1_000_000, h: 500_000 },
+            rect: Rect {
+                x,
+                y,
+                w: 1_000_000,
+                h: 500_000,
+            },
             font_size: None,
         }
     }
 
     fn slide(idx: usize, elements: Vec<SlideElement>) -> SlideData {
-        SlideData { index: idx, elements }
+        SlideData {
+            index: idx,
+            elements,
+        }
     }
 
     // ── ColumnLeftEdgeRule ────────────────────────────────────────────────────
@@ -159,35 +172,44 @@ mod tests {
     #[test]
     fn column_left_edge_skips_single_element_column() {
         // Only one left-column element → no median comparison possible.
-        let s = slide(0, vec![
-            shape("L1", 457_200, 1_000_000),
-            shape("R1", 5_500_000, 1_000_000),
-            shape("R2", 5_500_000, 2_000_000),
-        ]);
+        let s = slide(
+            0,
+            vec![
+                shape("L1", 457_200, 1_000_000),
+                shape("R1", 5_500_000, 1_000_000),
+                shape("R2", 5_500_000, 2_000_000),
+            ],
+        );
         let v = ColumnLeftEdgeRule.check(&[s], T);
         assert!(v.is_empty());
     }
 
     #[test]
     fn column_left_edge_clean_when_aligned() {
-        let s = slide(0, vec![
-            shape("L1", 457_200, 1_000_000),
-            shape("L2", 457_200, 2_000_000),
-            shape("R1", 5_500_000, 1_000_000),
-            shape("R2", 5_500_000, 2_000_000),
-        ]);
+        let s = slide(
+            0,
+            vec![
+                shape("L1", 457_200, 1_000_000),
+                shape("L2", 457_200, 2_000_000),
+                shape("R1", 5_500_000, 1_000_000),
+                shape("R2", 5_500_000, 2_000_000),
+            ],
+        );
         let v = ColumnLeftEdgeRule.check(&[s], T);
         assert!(v.is_empty());
     }
 
     #[test]
     fn column_left_edge_fires_when_misaligned() {
-        let s = slide(0, vec![
-            shape("L1", 457_200, 1_000_000),
-            shape("L2", 457_200 + 200_000, 2_000_000), // 200_000 EMU off
-            shape("R1", 5_500_000, 1_000_000),
-            shape("R2", 5_500_000, 2_000_000),
-        ]);
+        let s = slide(
+            0,
+            vec![
+                shape("L1", 457_200, 1_000_000),
+                shape("L2", 457_200 + 200_000, 2_000_000), // 200_000 EMU off
+                shape("R1", 5_500_000, 1_000_000),
+                shape("R2", 5_500_000, 2_000_000),
+            ],
+        );
         let v = ColumnLeftEdgeRule.check(&[s], T);
         assert!(!v.is_empty());
         assert_eq!(v[0].rule_id, "COLUMN_LEFT_EDGE");
@@ -198,12 +220,15 @@ mod tests {
 
     #[test]
     fn column_left_edge_no_fix_when_sub_threshold() {
-        let s = slide(0, vec![
-            shape("L1", 457_200, 1_000_000),
-            shape("L2", 457_200 + 1, 2_000_000), // 1 EMU — well within 2 px
-            shape("R1", 5_500_000, 1_000_000),
-            shape("R2", 5_500_000, 2_000_000),
-        ]);
+        let s = slide(
+            0,
+            vec![
+                shape("L1", 457_200, 1_000_000),
+                shape("L2", 457_200 + 1, 2_000_000), // 1 EMU — well within 2 px
+                shape("R1", 5_500_000, 1_000_000),
+                shape("R2", 5_500_000, 2_000_000),
+            ],
+        );
         let v = ColumnLeftEdgeRule.check(&[s], T);
         assert!(v.is_empty());
     }
@@ -212,23 +237,29 @@ mod tests {
 
     #[test]
     fn column_right_left_edge_skips_single_element_column() {
-        let s = slide(0, vec![
-            shape("L1", 457_200, 1_000_000),
-            shape("L2", 457_200, 2_000_000),
-            shape("R1", 5_500_000, 1_000_000),
-        ]);
+        let s = slide(
+            0,
+            vec![
+                shape("L1", 457_200, 1_000_000),
+                shape("L2", 457_200, 2_000_000),
+                shape("R1", 5_500_000, 1_000_000),
+            ],
+        );
         let v = ColumnRightLeftEdgeRule.check(&[s], T);
         assert!(v.is_empty());
     }
 
     #[test]
     fn column_right_left_edge_fires_with_fix() {
-        let s = slide(0, vec![
-            shape("L1", 457_200, 1_000_000),
-            shape("L2", 457_200, 2_000_000),
-            shape("R1", 5_500_000, 1_000_000),
-            shape("R2", 5_500_000 + 200_000, 2_000_000),
-        ]);
+        let s = slide(
+            0,
+            vec![
+                shape("L1", 457_200, 1_000_000),
+                shape("L2", 457_200, 2_000_000),
+                shape("R1", 5_500_000, 1_000_000),
+                shape("R2", 5_500_000 + 200_000, 2_000_000),
+            ],
+        );
         let v = ColumnRightLeftEdgeRule.check(&[s], T);
         assert!(!v.is_empty());
         let fix = v[0].fix.as_ref().unwrap();
@@ -240,24 +271,30 @@ mod tests {
 
     #[test]
     fn column_top_edge_clean_when_aligned() {
-        let s = slide(0, vec![
-            shape("L1", 457_200, 1_000_000),
-            shape("L2", 457_200, 2_000_000),
-            shape("R1", 5_500_000, 1_000_000),
-            shape("R2", 5_500_000, 2_000_000),
-        ]);
+        let s = slide(
+            0,
+            vec![
+                shape("L1", 457_200, 1_000_000),
+                shape("L2", 457_200, 2_000_000),
+                shape("R1", 5_500_000, 1_000_000),
+                shape("R2", 5_500_000, 2_000_000),
+            ],
+        );
         let v = ColumnTopEdgeRule.check(&[s], T);
         assert!(v.is_empty());
     }
 
     #[test]
     fn column_top_edge_fires_on_misaligned_top() {
-        let s = slide(0, vec![
-            shape("L1", 457_200, 1_000_000),
-            shape("L2", 457_200, 2_000_000),
-            shape("R1", 5_500_000, 1_000_000 + 200_000), // right column starts lower
-            shape("R2", 5_500_000, 2_000_000),
-        ]);
+        let s = slide(
+            0,
+            vec![
+                shape("L1", 457_200, 1_000_000),
+                shape("L2", 457_200, 2_000_000),
+                shape("R1", 5_500_000, 1_000_000 + 200_000), // right column starts lower
+                shape("R2", 5_500_000, 2_000_000),
+            ],
+        );
         let v = ColumnTopEdgeRule.check(&[s], T);
         assert!(!v.is_empty());
         assert_eq!(v[0].rule_id, "COLUMN_TOP_EDGE");
@@ -266,15 +303,20 @@ mod tests {
     #[test]
     fn column_top_edge_fix_targets_lagging_element() {
         // Left top = 1_000_000, right top = 1_200_000 → right is lower, fix snaps it up.
-        let s = slide(0, vec![
-            shape("L1", 457_200, 1_000_000),
-            shape("L2", 457_200, 2_000_000),
-            shape("R1", 5_500_000, 1_200_000),
-            shape("R2", 5_500_000, 2_000_000),
-        ]);
+        let s = slide(
+            0,
+            vec![
+                shape("L1", 457_200, 1_000_000),
+                shape("L2", 457_200, 2_000_000),
+                shape("R1", 5_500_000, 1_200_000),
+                shape("R2", 5_500_000, 2_000_000),
+            ],
+        );
         let v = ColumnTopEdgeRule.check(&[s], T);
         assert!(!v.is_empty());
         let fix = v[0].fix.as_ref().unwrap();
-        assert!(matches!(fix, Fix::SetY { element_name, y: 1_000_000, .. } if element_name == "R1"));
+        assert!(
+            matches!(fix, Fix::SetY { element_name, y: 1_000_000, .. } if element_name == "R1")
+        );
     }
 }

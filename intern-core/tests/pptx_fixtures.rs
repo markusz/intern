@@ -164,7 +164,10 @@ fn fix_column_left_edge_round_trips() {
 
     let v = violations_for(&path, "COLUMN_LEFT_EDGE");
     cleanup(&path);
-    assert!(v.is_empty(), "expected no COLUMN_LEFT_EDGE violations after fix: {v:#?}");
+    assert!(
+        v.is_empty(),
+        "expected no COLUMN_LEFT_EDGE violations after fix: {v:#?}"
+    );
 }
 
 #[test]
@@ -193,7 +196,10 @@ fn fix_grid_row_top_round_trips() {
 
     let v = violations_for(&path, "GRID_ROW_TOP");
     cleanup(&path);
-    assert!(v.is_empty(), "expected no GRID_ROW_TOP violations after fix: {v:#?}");
+    assert!(
+        v.is_empty(),
+        "expected no GRID_ROW_TOP violations after fix: {v:#?}"
+    );
 }
 
 #[test]
@@ -202,7 +208,13 @@ fn fix_column_right_left_edge_round_trips() {
         shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
         shape_at("L2", 457_200, 2_000_000, 1_500_000, 600_000),
         shape_at("R1", 5_500_000, 1_000_000, 1_500_000, 600_000),
-        shape_at("R2", 5_500_000 + 300 * 9_525u32, 2_000_000, 1_500_000, 600_000),
+        shape_at(
+            "R2",
+            5_500_000 + 300 * 9_525u32,
+            2_000_000,
+            1_500_000,
+            600_000,
+        ),
     ]);
     let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
     let path = write_tmp(&bytes, "fix_col_right");
@@ -214,7 +226,10 @@ fn fix_column_right_left_edge_round_trips() {
 
     let v = violations_for(&path, "COLUMN_RIGHT_LEFT_EDGE");
     cleanup(&path);
-    assert!(v.is_empty(), "expected no COLUMN_RIGHT_LEFT_EDGE violations after fix: {v:#?}");
+    assert!(
+        v.is_empty(),
+        "expected no COLUMN_RIGHT_LEFT_EDGE violations after fix: {v:#?}"
+    );
 }
 
 #[test]
@@ -223,7 +238,13 @@ fn fix_column_top_edge_round_trips() {
         shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
         shape_at("L2", 457_200, 2_000_000, 1_500_000, 600_000),
         // Right column starts 300px lower.
-        shape_at("R1", 5_500_000, 1_000_000 + 300 * 9_525u32, 1_500_000, 600_000),
+        shape_at(
+            "R1",
+            5_500_000,
+            1_000_000 + 300 * 9_525u32,
+            1_500_000,
+            600_000,
+        ),
         shape_at("R2", 5_500_000, 2_500_000, 1_500_000, 600_000),
     ]);
     let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
@@ -236,7 +257,10 @@ fn fix_column_top_edge_round_trips() {
 
     let v = violations_for(&path, "COLUMN_TOP_EDGE");
     cleanup(&path);
-    assert!(v.is_empty(), "expected no COLUMN_TOP_EDGE violations after fix: {v:#?}");
+    assert!(
+        v.is_empty(),
+        "expected no COLUMN_TOP_EDGE violations after fix: {v:#?}"
+    );
 }
 
 #[test]
@@ -265,7 +289,10 @@ fn fix_grid_col_left_round_trips() {
 
     let v = violations_for(&path, "GRID_COL_LEFT");
     cleanup(&path);
-    assert!(v.is_empty(), "expected no GRID_COL_LEFT violations after fix: {v:#?}");
+    assert!(
+        v.is_empty(),
+        "expected no GRID_COL_LEFT violations after fix: {v:#?}"
+    );
 }
 
 // ── clean deck ────────────────────────────────────────────────────────────────

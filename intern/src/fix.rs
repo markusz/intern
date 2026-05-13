@@ -52,10 +52,7 @@ pub fn run(args: FixArgs, cfg: Config) -> miette::Result<()> {
         .flat_map(|r| r.check(&slides, threshold))
         .collect();
 
-    let fixes: Vec<rules::Fix> = violations
-        .into_iter()
-        .filter_map(|v| v.fix)
-        .collect();
+    let fixes: Vec<rules::Fix> = violations.into_iter().filter_map(|v| v.fix).collect();
 
     if fixes.is_empty() {
         println!("No fixable violations found.");
