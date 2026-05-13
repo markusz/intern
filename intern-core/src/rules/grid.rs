@@ -1,6 +1,6 @@
 use crate::detector::{SlideLayout, detect};
 use crate::model::SlideData;
-use crate::rules::{Rule, Severity, Violation, ViolationMessage};
+use crate::rules::{Fix, Rule, Severity, Violation, ViolationMessage};
 
 pub struct GridHSpacingRule;
 pub struct GridVSpacingRule;
@@ -72,6 +72,7 @@ impl Rule for GridHSpacingRule {
                                 expected_emu: exp,
                             },
                             severity: Severity::Warning,
+                            fix: None, // redistributing gaps requires moving multiple shapes
                         });
                     }
                 }
@@ -134,6 +135,7 @@ impl Rule for GridVSpacingRule {
                                 expected_emu: exp,
                             },
                             severity: Severity::Warning,
+                            fix: None, // redistributing gaps requires moving multiple shapes
                         });
                     }
                 }
@@ -169,6 +171,11 @@ impl Rule for GridRowTopRule {
                             element: Some(slide.elements[i].name.clone()),
                             message: ViolationMessage::EdgeOff { diff_emu: diff },
                             severity: Severity::Warning,
+                            fix: Some(Fix::SetY {
+                                slide_idx: slide.index,
+                                element_name: slide.elements[i].name.clone(),
+                                y: exp,
+                            }),
                         });
                     }
                 }
@@ -204,6 +211,11 @@ impl Rule for GridColLeftRule {
                             element: Some(slide.elements[i].name.clone()),
                             message: ViolationMessage::EdgeOff { diff_emu: diff },
                             severity: Severity::Warning,
+                            fix: Some(Fix::SetX {
+                                slide_idx: slide.index,
+                                element_name: slide.elements[i].name.clone(),
+                                x: exp,
+                            }),
                         });
                     }
                 }
@@ -296,5 +308,68 @@ mod tests {
     fn grid_row_top_clean() {
         let s = grid_with_skew(200_000, 0);
         assert!(GridRowTopRule.check(&[s], THRESHOLD).is_empty());
+    }
+
+    #[test]
+    fn grid_row_top_fix_snaps_to_expected_y() {
+        let skew = 50_000i64;
+        let s = grid_with_skew(200_000, skew);
+        let v = GridRowTopRule.check(&[s], THRESHOLD);
+        assert!(!v.is_empty());
+        let fix = v[0].fix.as_ref().unwrap();
+        // Row 0 has TL at 1_500_000 and TR at 1_550_000; median (index 1) = 1_550_000.
+        // TL deviates, fix snaps it to 1_550_000.
+        assert!(matches!(fix, Fix::SetY { y: 1_550_000, .. }));
+    }
+
+    #[test]
+    fn grid_v_spacing_clean() {
+        let s = grid_with_skew(200_000, 0);
+        assert!(GridVSpacingRule.check(&[s], THRESHOLD).is_empty());
+    }
+
+    #[test]
+    fn grid_v_spacing_fires_on_unequal_gaps() {
+        // Col 0 vertical gap = 200k, col 1 vertical gap = 400k → mismatch.
+        let (w, h) = (1_000_000i64, 800_000i64);
+        let col_gap = 200_000i64;
+        let s = SlideData {
+            index: 0,
+            elements: vec![
+                img("TL", 500_000, 1_500_000),
+                img("TR", 500_000 + w + col_gap, 1_500_000),
+                img("BL", 500_000, 1_500_000 + h + 200_000),          // gap=200k
+                img("BR", 500_000 + w + col_gap, 1_500_000 + h + 400_000), // gap=400k
+            ],
+        };
+        let v = GridVSpacingRule.check(&[s], THRESHOLD);
+        assert!(!v.is_empty(), "expected GRID_V_SPACING violation");
+    }
+
+    #[test]
+    fn grid_col_left_fires_on_misaligned_column() {
+        let skew = 50_000i64;
+        let (w, h) = (1_000_000i64, 800_000i64);
+        let gap = 200_000i64;
+        let s = SlideData {
+            index: 0,
+            elements: vec![
+                img("TL", 500_000, 1_500_000),
+                img("TR", 500_000 + w + gap, 1_500_000),
+                img("BL", 500_000 + skew, 1_500_000 + h + gap), // col 0 bottom shifted right
+                img("BR", 500_000 + w + gap, 1_500_000 + h + gap),
+            ],
+        };
+        let v = GridColLeftRule.check(&[s], THRESHOLD);
+        assert!(!v.is_empty(), "expected GRID_COL_LEFT violation");
+        let fix = v[0].fix.as_ref().unwrap();
+        // Median of col 0 xs: [500_000, 550_000], index 1 = 550_000.
+        assert!(matches!(fix, Fix::SetX { x: 550_000, .. }));
+    }
+
+    #[test]
+    fn grid_col_left_clean() {
+        let s = grid_with_skew(200_000, 0);
+        assert!(GridColLeftRule.check(&[s], THRESHOLD).is_empty());
     }
 }

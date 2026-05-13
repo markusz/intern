@@ -10,4 +10,7 @@ pub enum Error {
 
     #[error("cannot parse slide: {0}")]
     ParseSlide(String),
+
+    #[error("cannot write presentation '{path}': {message}")]
+    Write { path: String, message: String },
 }

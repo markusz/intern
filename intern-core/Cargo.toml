@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 ppt-rs = "0.2.14"
 thiserror = "1"
+zip = "0.6"
+quick-xml = "0.37"

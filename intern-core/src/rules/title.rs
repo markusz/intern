@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::model::{ElementKind, SlideData, SlideElement};
-use crate::rules::{Rule, Severity, Violation, ViolationMessage};
+use crate::rules::{Fix, Rule, Severity, Violation, ViolationMessage};
 
 pub struct TitleYRule;
 pub struct TitleXWidthRule;
@@ -53,6 +53,11 @@ impl Rule for TitleYRule {
                     expected_emu: expected,
                 },
                 severity: Severity::Warning,
+                fix: Some(Fix::SetY {
+                    slide_idx: *idx,
+                    element_name: e.name.clone(),
+                    y: expected,
+                }),
             })
             .collect()
     }
@@ -93,6 +98,12 @@ impl Rule for TitleXWidthRule {
                         w_off_emu: (dw > threshold).then_some(dw),
                     },
                     severity: Severity::Warning,
+                    fix: Some(Fix::SetXW {
+                        slide_idx: *idx,
+                        element_name: e.name.clone(),
+                        x: (dx > threshold).then_some(exp_x),
+                        w: (dw > threshold).then_some(exp_w),
+                    }),
                 })
             })
             .collect()
@@ -106,9 +117,9 @@ impl Rule for TitleFontSizeRule {
 
     fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
         let ts = titles(slides);
-        let sized: Vec<(usize, u32)> = ts
+        let sized: Vec<(usize, String, u32)> = ts
             .iter()
-            .filter_map(|(idx, e)| e.font_size.map(|sz| (*idx, sz)))
+            .filter_map(|(idx, e)| e.font_size.map(|sz| (*idx, e.name.clone(), sz)))
             .collect();
 
         if sized.len() < 2 {
@@ -116,7 +127,7 @@ impl Rule for TitleFontSizeRule {
         }
 
         let mut counts: HashMap<u32, usize> = HashMap::new();
-        for (_, sz) in &sized {
+        for (_, _, sz) in &sized {
             *counts.entry(*sz).or_default() += 1;
         }
         let expected = *counts
@@ -127,16 +138,21 @@ impl Rule for TitleFontSizeRule {
 
         sized
             .iter()
-            .filter(|(_, sz)| *sz != expected)
-            .map(|(idx, sz)| Violation {
+            .filter(|(_, _, sz)| *sz != expected)
+            .map(|(idx, name, sz)| Violation {
                 rule_id: self.id(),
                 slide: Some(idx + 1),
-                element: None,
+                element: Some(name.clone()),
                 message: ViolationMessage::TitleFontSize {
                     actual: *sz,
                     expected,
                 },
                 severity: Severity::Warning,
+                fix: Some(Fix::SetFontSize {
+                    slide_idx: *idx,
+                    element_name: name.clone(),
+                    size: expected,
+                }),
             })
             .collect()
     }
@@ -227,6 +243,15 @@ mod tests {
         // None = inherited from layout master, no false positives
         let slides = vec![title_slide(0, 274_638, None), title_slide(1, 274_638, None)];
         assert!(TitleFontSizeRule.check(&slides, THRESHOLD).is_empty());
+    }
+
+    #[test]
+    fn title_x_width_clean() {
+        let slides = vec![
+            title_slide(0, 274_638, None),
+            title_slide(1, 274_638, None),
+        ];
+        assert!(TitleXWidthRule.check(&slides, THRESHOLD).is_empty());
     }
 
     #[test]
