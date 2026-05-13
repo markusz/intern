@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::model::{ElementKind, SlideData, SlideElement};
-use crate::rules::{Rule, Severity, Violation};
+use crate::rules::{Rule, Severity, Violation, ViolationMessage};
 
 pub struct TitleYRule;
 pub struct TitleXWidthRule;
@@ -48,12 +48,10 @@ impl Rule for TitleYRule {
                 rule_id: self.id(),
                 slide: Some(idx + 1),
                 element: Some(e.name.clone()),
-                message: format!(
-                    "title Y {} vs expected {} ({:.1}px off)",
-                    e.rect.y,
-                    expected,
-                    (e.rect.y - expected).abs() as f64 / 9525.0,
-                ),
+                message: ViolationMessage::TitleYOff {
+                    actual_emu: e.rect.y,
+                    expected_emu: expected,
+                },
                 severity: Severity::Warning,
             })
             .collect()
@@ -86,18 +84,14 @@ impl Rule for TitleXWidthRule {
                 if dx <= threshold && dw <= threshold {
                     return None;
                 }
-                let mut parts = Vec::new();
-                if dx > threshold {
-                    parts.push(format!("X {:.1}px off", dx as f64 / 9525.0));
-                }
-                if dw > threshold {
-                    parts.push(format!("width {:.1}px off", dw as f64 / 9525.0));
-                }
                 Some(Violation {
                     rule_id: self.id(),
                     slide: Some(idx + 1),
                     element: Some(e.name.clone()),
-                    message: format!("title position/size inconsistent: {}", parts.join(", ")),
+                    message: ViolationMessage::TitlePositionSize {
+                        x_off_emu: (dx > threshold).then_some(dx),
+                        w_off_emu: (dw > threshold).then_some(dw),
+                    },
                     severity: Severity::Warning,
                 })
             })
@@ -138,11 +132,10 @@ impl Rule for TitleFontSizeRule {
                 rule_id: self.id(),
                 slide: Some(idx + 1),
                 element: None,
-                message: format!(
-                    "title font size {}pt, expected {}pt",
-                    sz / 100,
-                    expected / 100,
-                ),
+                message: ViolationMessage::TitleFontSize {
+                    actual: *sz,
+                    expected,
+                },
                 severity: Severity::Warning,
             })
             .collect()
@@ -153,6 +146,7 @@ impl Rule for TitleFontSizeRule {
 mod tests {
     use super::*;
     use crate::model::{ElementKind, Rect, SlideData, SlideElement};
+    use crate::rules::ViolationMessage;
 
     const THRESHOLD: i64 = 19_050; // 2px at 96 DPI
 
@@ -219,8 +213,13 @@ mod tests {
         let v = TitleFontSizeRule.check(&slides, THRESHOLD);
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].slide, Some(3));
-        assert!(v[0].message.contains("36pt"));
-        assert!(v[0].message.contains("44pt"));
+        assert!(matches!(
+            v[0].message,
+            ViolationMessage::TitleFontSize {
+                actual: 3600,
+                expected: 4400
+            }
+        ));
     }
 
     #[test]
@@ -264,6 +263,12 @@ mod tests {
         ];
         let v = TitleXWidthRule.check(&slides, THRESHOLD);
         assert_eq!(v.len(), 1);
-        assert!(v[0].message.contains("X"));
+        assert!(matches!(
+            v[0].message,
+            ViolationMessage::TitlePositionSize {
+                x_off_emu: Some(_),
+                w_off_emu: None
+            }
+        ));
     }
 }

@@ -1,7 +1,6 @@
+use miette::{Context, IntoDiagnostic};
 use serde::Deserialize;
 use std::path::Path;
-
-use pptlint::error::PptlintError;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct Config {
@@ -19,30 +18,28 @@ pub struct RulesConfig {
 #[derive(Debug, Deserialize, Default)]
 pub struct OutputConfig {
     pub group_by: Option<String>,
-    pub json: Option<bool>,
+    pub format: Option<String>,
 }
 
 impl Config {
-    pub fn load(path: &Path) -> Result<Self, PptlintError> {
+    pub fn load(path: &Path) -> miette::Result<Self> {
         let display = path.display().to_string();
-        let content = std::fs::read_to_string(path).map_err(|e| PptlintError::ConfigRead {
-            path: display.clone(),
-            source: e,
-        })?;
-        toml::from_str(&content).map_err(|e| PptlintError::ConfigParse {
-            path: display,
-            source: e,
-        })
+        let content = std::fs::read_to_string(path)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("cannot read config '{display}'"))?;
+        toml::from_str(&content)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("cannot parse config '{display}'"))
     }
 
     /// Returns `Ok(default)` when no config file is present (auto-discovery only).
-    /// Returns `Err` if an explicit path was given and the file is missing or malformed,
-    /// or if the auto-discovered file exists but cannot be parsed.
-    pub fn auto_load(explicit: Option<&Path>) -> Result<Self, PptlintError> {
+    /// Returns `Err` if an explicit path was given or if the auto-discovered file exists but
+    /// cannot be parsed.
+    pub fn auto_load(explicit: Option<&Path>) -> miette::Result<Self> {
         match explicit {
             Some(path) => Self::load(path),
             None => {
-                let default_path = Path::new(".pptlint.toml");
+                let default_path = Path::new(".intern.toml");
                 if default_path.exists() {
                     Self::load(default_path)
                 } else {

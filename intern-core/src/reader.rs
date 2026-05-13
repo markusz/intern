@@ -1,11 +1,11 @@
 use ppt_rs::opc::Package;
 use ppt_rs::oxml::{SlideParser, XmlParser};
 
-use crate::error::PptlintError;
+use crate::error::Error;
 use crate::model::{ElementKind, Rect, SlideData, SlideElement};
 
-pub fn read_presentation(path: &str) -> Result<Vec<SlideData>, PptlintError> {
-    let pkg = Package::open(path).map_err(|e| PptlintError::Open {
+pub fn read_presentation(path: &str) -> Result<Vec<SlideData>, Error> {
+    let pkg = Package::open(path).map_err(|e| Error::Open {
         path: path.to_string(),
         message: e.to_string(),
     })?;
@@ -16,14 +16,14 @@ pub fn read_presentation(path: &str) -> Result<Vec<SlideData>, PptlintError> {
         .map(|(idx, slide_path)| {
             let xml = pkg
                 .get_part_string(slide_path)
-                .ok_or_else(|| PptlintError::SlideMissing(slide_path.clone()))?;
+                .ok_or_else(|| Error::SlideMissing(slide_path.clone()))?;
             parse_slide(idx, &xml)
         })
         .collect()
 }
 
-fn parse_slide(index: usize, xml: &str) -> Result<SlideData, PptlintError> {
-    let parsed = SlideParser::parse(xml).map_err(|e| PptlintError::ParseSlide(e.to_string()))?;
+fn parse_slide(index: usize, xml: &str) -> Result<SlideData, Error> {
+    let parsed = SlideParser::parse(xml).map_err(|e| Error::ParseSlide(e.to_string()))?;
     let mut elements: Vec<SlideElement> = parsed
         .shapes
         .into_iter()

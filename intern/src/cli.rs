@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "pptlint",
-    about = "Lint PowerPoint presentations for alignment issues"
+    name = "intern",
+    about = "Because your real interns have better things to do than align your ppt boxes"
 )]
 pub struct Cli {
     pub file: PathBuf,
@@ -21,9 +21,9 @@ pub struct Cli {
     #[arg(long)]
     pub threshold: Option<u32>,
 
-    /// Output as JSON
+    /// Output format (default: table)
     #[arg(long)]
-    pub json: bool,
+    pub output: Option<OutputFormat>,
 
     /// Analyze only this slide (1-based)
     #[arg(long)]
@@ -33,7 +33,7 @@ pub struct Cli {
     #[arg(long)]
     pub group_by: Option<GroupBy>,
 
-    /// Path to config file (default: .pptlint.toml)
+    /// Path to config file (default: .intern.toml)
     #[arg(long)]
     pub config: Option<PathBuf>,
 }
@@ -42,4 +42,11 @@ pub struct Cli {
 pub enum GroupBy {
     Slide,
     Rule,
+}
+
+#[derive(ValueEnum, Clone, Debug, PartialEq)]
+pub enum OutputFormat {
+    Table,
+    Text,
+    Json,
 }

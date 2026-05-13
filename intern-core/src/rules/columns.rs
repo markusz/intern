@@ -1,6 +1,6 @@
 use crate::detector::{SlideLayout, detect};
 use crate::model::SlideData;
-use crate::rules::{Rule, Severity, Violation};
+use crate::rules::{Rule, Severity, Violation, ViolationMessage};
 
 pub struct ColumnLeftEdgeRule;
 pub struct ColumnTopEdgeRule;
@@ -39,10 +39,7 @@ impl Rule for ColumnLeftEdgeRule {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
                         element: Some(slide.elements[i].name.clone()),
-                        message: format!(
-                            "left-column left edge {:.1}px off from peers",
-                            diff as f64 / 9525.0,
-                        ),
+                        message: ViolationMessage::EdgeOff { diff_emu: diff },
                         severity: Severity::Warning,
                     });
                 }
@@ -72,10 +69,7 @@ impl Rule for ColumnTopEdgeRule {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
                         element: None,
-                        message: format!(
-                            "left/right column top edges misaligned by {:.1}px",
-                            diff as f64 / 9525.0,
-                        ),
+                        message: ViolationMessage::ColumnTopMisaligned { diff_emu: diff },
                         severity: Severity::Warning,
                     });
                 }
@@ -108,10 +102,7 @@ impl Rule for ColumnRightLeftEdgeRule {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
                         element: Some(slide.elements[i].name.clone()),
-                        message: format!(
-                            "right-column left edge {:.1}px off from peers",
-                            diff as f64 / 9525.0,
-                        ),
+                        message: ViolationMessage::EdgeOff { diff_emu: diff },
                         severity: Severity::Warning,
                     });
                 }

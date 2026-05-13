@@ -1,6 +1,6 @@
 use crate::detector::{SlideLayout, detect};
 use crate::model::SlideData;
-use crate::rules::{Rule, Severity, Violation};
+use crate::rules::{Rule, Severity, Violation, ViolationMessage};
 
 pub struct GridHSpacingRule;
 pub struct GridVSpacingRule;
@@ -67,11 +67,10 @@ impl Rule for GridHSpacingRule {
                                 "{} / {}",
                                 slide.elements[pair[0]].name, slide.elements[pair[1]].name
                             )),
-                            message: format!(
-                                "horizontal gap {:.1}px, expected ~{:.1}px",
-                                sp as f64 / 9525.0,
-                                exp as f64 / 9525.0,
-                            ),
+                            message: ViolationMessage::GapUneven {
+                                actual_emu: sp,
+                                expected_emu: exp,
+                            },
                             severity: Severity::Warning,
                         });
                     }
@@ -130,11 +129,10 @@ impl Rule for GridVSpacingRule {
                                 "{} / {}",
                                 slide.elements[pair[0]].name, slide.elements[pair[1]].name
                             )),
-                            message: format!(
-                                "vertical gap {:.1}px, expected ~{:.1}px",
-                                sp as f64 / 9525.0,
-                                exp as f64 / 9525.0,
-                            ),
+                            message: ViolationMessage::GapUneven {
+                                actual_emu: sp,
+                                expected_emu: exp,
+                            },
                             severity: Severity::Warning,
                         });
                     }
@@ -169,10 +167,7 @@ impl Rule for GridRowTopRule {
                             rule_id: self.id(),
                             slide: Some(slide.index + 1),
                             element: Some(slide.elements[i].name.clone()),
-                            message: format!(
-                                "row top edge {:.1}px off from row peers",
-                                diff as f64 / 9525.0,
-                            ),
+                            message: ViolationMessage::EdgeOff { diff_emu: diff },
                             severity: Severity::Warning,
                         });
                     }
@@ -207,10 +202,7 @@ impl Rule for GridColLeftRule {
                             rule_id: self.id(),
                             slide: Some(slide.index + 1),
                             element: Some(slide.elements[i].name.clone()),
-                            message: format!(
-                                "column left edge {:.1}px off from column peers",
-                                diff as f64 / 9525.0,
-                            ),
+                            message: ViolationMessage::EdgeOff { diff_emu: diff },
                             severity: Severity::Warning,
                         });
                     }
