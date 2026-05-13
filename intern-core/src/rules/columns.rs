@@ -167,8 +167,6 @@ mod tests {
         }
     }
 
-    // ── ColumnLeftEdgeRule ────────────────────────────────────────────────────
-
     #[test]
     fn column_left_edge_skips_single_element_column() {
         // Only one left-column element → no median comparison possible.
@@ -233,8 +231,6 @@ mod tests {
         assert!(v.is_empty());
     }
 
-    // ── ColumnRightLeftEdgeRule ───────────────────────────────────────────────
-
     #[test]
     fn column_right_left_edge_skips_single_element_column() {
         let s = slide(
@@ -266,8 +262,6 @@ mod tests {
         // Median of [5_500_000, 5_700_000] is 5_700_000 (higher element at sorted index 1).
         assert!(matches!(fix, Fix::SetX { x: 5_700_000, .. }));
     }
-
-    // ── ColumnTopEdgeRule ─────────────────────────────────────────────────────
 
     #[test]
     fn column_top_edge_clean_when_aligned() {

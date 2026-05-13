@@ -210,8 +210,6 @@ pub fn all_rules() -> Vec<Box<dyn Rule>> {
 mod tests {
     use super::*;
 
-    // ── ViolationMessage::Display ────────────────────────────────────────────
-
     #[test]
     fn violation_message_edge_off_display() {
         let m = ViolationMessage::EdgeOff { diff_emu: 95_250 };
@@ -263,8 +261,6 @@ mod tests {
         };
         assert_eq!(m.to_string(), "title font size 36pt, expected 44pt");
     }
-
-    // ── Fix::Display and accessors ────────────────────────────────────────────
 
     #[test]
     fn fix_set_x_display() {
@@ -319,7 +315,4 @@ mod tests {
         assert_eq!(f.slide_idx(), 3);
         assert_eq!(f.element_name(), "E");
     }
-
-    // ── parse_slide_idx (writer) ──────────────────────────────────────────────
-    // Re-exported via pub(crate) in writer module — tested here via writer tests.
 }

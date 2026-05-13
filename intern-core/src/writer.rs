@@ -208,8 +208,6 @@ fn patch_slide_xml(xml: &str, fixes: &[&Fix]) -> String {
     String::from_utf8(writer.into_inner()).unwrap_or_else(|_| xml.to_owned())
 }
 
-// ── XML helpers ───────────────────────────────────────────────────────────────
-
 fn local_name_str(e: &BytesStart<'_>) -> String {
     String::from_utf8_lossy(e.local_name().as_ref()).into_owned()
 }

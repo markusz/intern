@@ -11,8 +11,6 @@ use ppt_rs::generator::{SlideLayout, create_pptx_with_content};
 
 const THRESHOLD: i64 = 19_050; // 2px
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
 fn write_tmp(bytes: &[u8], name: &str) -> String {
     let path = format!("/tmp/intern_test_{name}.pptx");
     std::fs::write(&path, bytes).expect("write tmp pptx");
@@ -53,8 +51,6 @@ fn all_violations(path: &str) -> Vec<intern_core::rules::Violation> {
         .flat_map(|r| r.check(&slides, THRESHOLD))
         .collect()
 }
-
-// ── reader smoke test ─────────────────────────────────────────────────────────
 
 #[test]
 fn reader_parses_shapes_with_correct_positions() {
@@ -105,8 +101,6 @@ fn reader_parses_images_from_raw_xml() {
     assert!(result.is_ok());
 }
 
-// ── two-column layout integration ─────────────────────────────────────────────
-
 #[test]
 fn column_left_edge_fires_on_misaligned_left_column() {
     let offset = 300 * 9_525u32;
@@ -142,8 +136,6 @@ fn column_left_edge_clean_on_aligned_columns() {
         "COLUMN_LEFT_EDGE should be silent when columns are aligned"
     );
 }
-
-// ── fix round-trips ───────────────────────────────────────────────────────────
 
 #[test]
 fn fix_column_left_edge_round_trips() {
@@ -294,8 +286,6 @@ fn fix_grid_col_left_round_trips() {
         "expected no GRID_COL_LEFT violations after fix: {v:#?}"
     );
 }
-
-// ── clean deck ────────────────────────────────────────────────────────────────
 
 #[test]
 fn no_violations_on_perfectly_aligned_deck() {

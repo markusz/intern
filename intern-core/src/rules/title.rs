@@ -130,6 +130,7 @@ impl Rule for TitleFontSizeRule {
         for (_, _, sz) in &sized {
             *counts.entry(*sz).or_default() += 1;
         }
+        // SAFETY: sized.len() >= 2 ensures counts is non-empty, so max_by_key returns Some.
         let expected = *counts
             .iter()
             .max_by_key(|(_, c)| *c)
