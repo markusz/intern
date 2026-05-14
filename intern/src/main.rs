@@ -4,7 +4,7 @@ mod fix;
 mod report;
 
 use clap::Parser;
-use cli::{Cli, Command, GroupBy, OutputFormat};
+use cli::{CheckArgs, Cli, Command, GroupBy, OutputFormat};
 use config::Config;
 use intern_core::{model, reader, rules};
 use miette::IntoDiagnostic;
@@ -15,12 +15,12 @@ fn main() -> miette::Result<()> {
     let cfg = Config::auto_load(cli.config.as_deref())?;
 
     match cli.command {
-        Command::Lint(args) => run_lint(args, cfg),
+        Command::Check(args) => run_check(args, cfg),
         Command::Fix(args) => fix::run(args, cfg),
     }
 }
 
-fn run_lint(args: cli::LintArgs, cfg: Config) -> miette::Result<()> {
+fn run_check(args: CheckArgs, cfg: Config) -> miette::Result<()> {
     let threshold_px = args.threshold.or(cfg.threshold_px).unwrap_or(2);
     let threshold = threshold_px as i64 * model::EMU_PER_PX;
 

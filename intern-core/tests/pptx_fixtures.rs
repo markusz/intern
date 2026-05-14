@@ -291,8 +291,8 @@ fn fix_grid_col_left_round_trips() {
 fn no_violations_on_perfectly_aligned_deck() {
     let make_slide = |title: &str| {
         SlideContent::new(title).with_shapes(vec![
-            shape_at("Left", 457_200, 1_200_000, 3_500_000, 4_000_000),
-            shape_at("Right", 4_800_000, 1_200_000, 3_500_000, 4_000_000),
+            shape_at("Left", 457_200, 1_600_000, 3_500_000, 4_000_000),
+            shape_at("Right", 4_800_000, 1_600_000, 3_500_000, 4_000_000),
         ])
     };
 

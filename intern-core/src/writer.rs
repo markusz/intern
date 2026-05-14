@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
-use quick_xml::events::{BytesStart, Event};
+use quick_xml::events::{BytesStart, BytesText, Event};
 use quick_xml::reader::Reader as XmlReader;
 use quick_xml::writer::Writer as XmlWriter;
 use zip::ZipArchive;
@@ -138,6 +138,7 @@ fn patch_slide_xml(xml: &str, fixes: &[&Fix]) -> String {
     reader.config_mut().trim_text(false);
     let mut writer = XmlWriter::new(Vec::new());
     let mut current_fix: Option<&Fix> = None;
+    let mut in_text_run = false;
 
     loop {
         match reader.read_event() {
@@ -154,6 +155,10 @@ fn patch_slide_xml(xml: &str, fixes: &[&Fix]) -> String {
                         if let Some(name) = attr_value(&e, b"name") {
                             current_fix = fix_map.get(&name).copied();
                         }
+                        writer.write_event(Event::Start(e)).ok();
+                    }
+                    "t" => {
+                        in_text_run = matches!(current_fix, Some(Fix::NormalizeWhitespace { .. }));
                         writer.write_event(Event::Start(e)).ok();
                     }
                     "rPr" | "defRPr" => {
@@ -191,10 +196,23 @@ fn patch_slide_xml(xml: &str, fixes: &[&Fix]) -> String {
             },
 
             Ok(Event::End(e)) => {
-                if local_name_bytes(e.name().as_ref()) == b"sp" {
-                    current_fix = None;
+                match local_name_bytes(e.name().as_ref()) {
+                    b"sp" => current_fix = None,
+                    b"t" => in_text_run = false,
+                    _ => {}
                 }
                 writer.write_event(Event::End(e)).ok();
+            }
+
+            Ok(Event::Text(e)) if in_text_run => {
+                if let Ok(raw) = e.unescape() {
+                    let normalized = normalize_ws(&raw);
+                    writer
+                        .write_event(Event::Text(BytesText::new(&normalized)))
+                        .ok();
+                } else {
+                    writer.write_event(Event::Text(e)).ok();
+                }
             }
 
             Ok(e) => {
@@ -254,6 +272,23 @@ fn replace_attrs(e: BytesStart<'_>, replacements: &HashMap<&[u8], Vec<u8>>) -> B
     BytesStart::from_content(buf, name_len)
 }
 
+fn normalize_ws(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_space = false;
+    for ch in s.trim().chars() {
+        if ch == ' ' {
+            if !prev_space {
+                out.push(ch);
+            }
+            prev_space = true;
+        } else {
+            out.push(ch);
+            prev_space = false;
+        }
+    }
+    out
+}
+
 fn patch_off(e: BytesStart<'_>, fix: &Fix) -> BytesStart<'static> {
     let mut r: HashMap<&[u8], Vec<u8>> = HashMap::new();
     match fix {
@@ -268,7 +303,7 @@ fn patch_off(e: BytesStart<'_>, fix: &Fix) -> BytesStart<'static> {
                 r.insert(b"x", x.to_string().into_bytes());
             }
         }
-        Fix::SetFontSize { .. } => {}
+        Fix::SetFontSize { .. } | Fix::NormalizeWhitespace { .. } => {}
     }
     replace_attrs(e, &r)
 }
@@ -291,7 +326,8 @@ fn patch_font(e: BytesStart<'_>, fix: &Fix) -> BytesStart<'static> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_slide_idx;
+    use super::{normalize_ws, parse_slide_idx, patch_slide_xml};
+    use crate::rules::Fix;
 
     #[test]
     fn parse_slide_idx_first_slide() {
@@ -313,5 +349,73 @@ mod tests {
     #[test]
     fn parse_slide_idx_rejects_non_numeric_suffix() {
         assert_eq!(parse_slide_idx("ppt/slides/slideABC.xml"), None);
+    }
+
+    #[test]
+    fn normalize_ws_collapses_spaces() {
+        assert_eq!(normalize_ws("hello  world"), "hello world");
+        assert_eq!(normalize_ws("a   b   c"), "a b c");
+    }
+
+    #[test]
+    fn normalize_ws_trims_edges() {
+        assert_eq!(normalize_ws("  hello  "), "hello");
+        assert_eq!(normalize_ws(" leading"), "leading");
+        assert_eq!(normalize_ws("trailing "), "trailing");
+    }
+
+    #[test]
+    fn normalize_ws_leaves_clean_text_unchanged() {
+        assert_eq!(normalize_ws("clean text"), "clean text");
+    }
+
+    #[test]
+    fn patch_slide_xml_normalizes_double_space() {
+        let xml = r#"<root xmlns:p="p" xmlns:a="a">
+  <p:sp>
+    <p:nvSpPr><p:cNvPr name="Body"/></p:nvSpPr>
+    <p:txBody><a:p><a:r><a:t>hello  world</a:t></a:r></a:p></p:txBody>
+  </p:sp>
+</root>"#;
+        let fix = Fix::NormalizeWhitespace {
+            slide_idx: 0,
+            element_name: "Body".into(),
+        };
+        let result = patch_slide_xml(xml, &[&fix]);
+        assert!(result.contains("hello world"), "got: {result}");
+        assert!(!result.contains("hello  world"), "got: {result}");
+    }
+
+    #[test]
+    fn patch_slide_xml_trims_trailing_space() {
+        let xml = r#"<root xmlns:p="p" xmlns:a="a">
+  <p:sp>
+    <p:nvSpPr><p:cNvPr name="Body"/></p:nvSpPr>
+    <p:txBody><a:p><a:r><a:t>trailing space </a:t></a:r></a:p></p:txBody>
+  </p:sp>
+</root>"#;
+        let fix = Fix::NormalizeWhitespace {
+            slide_idx: 0,
+            element_name: "Body".into(),
+        };
+        let result = patch_slide_xml(xml, &[&fix]);
+        assert!(result.contains(">trailing space<"), "got: {result}");
+    }
+
+    #[test]
+    fn patch_slide_xml_only_patches_named_shape() {
+        let xml = r#"<root xmlns:p="p" xmlns:a="a">
+  <p:sp>
+    <p:nvSpPr><p:cNvPr name="Other"/></p:nvSpPr>
+    <p:txBody><a:p><a:r><a:t>hello  world</a:t></a:r></a:p></p:txBody>
+  </p:sp>
+</root>"#;
+        let fix = Fix::NormalizeWhitespace {
+            slide_idx: 0,
+            element_name: "Body".into(),
+        };
+        let result = patch_slide_xml(xml, &[&fix]);
+        // Different shape — text should be untouched.
+        assert!(result.contains("hello  world"), "got: {result}");
     }
 }

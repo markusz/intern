@@ -157,6 +157,9 @@ mod tests {
                 h: 500_000,
             },
             font_size: None,
+            font_family: None,
+            text_color: None,
+            paragraphs: vec![],
         }
     }
 

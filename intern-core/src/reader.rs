@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use ppt_rs::opc::Package;
+use ppt_rs::oxml::slide::TextRun;
 use ppt_rs::oxml::{SlideParser, XmlParser};
 
 use crate::error::Error;
@@ -24,6 +27,7 @@ pub fn read_presentation(path: &str) -> Result<Vec<SlideData>, Error> {
 
 fn parse_slide(index: usize, xml: &str) -> Result<SlideData, Error> {
     let parsed = SlideParser::parse(xml).map_err(|e| Error::ParseSlide(e.to_string()))?;
+    let families = parse_font_families(xml);
     let mut elements: Vec<SlideElement> = parsed
         .shapes
         .into_iter()
@@ -36,11 +40,16 @@ fn parse_slide(index: usize, xml: &str) -> Result<SlideData, Error> {
             } else {
                 ElementKind::TextBox
             };
-            let font_size = s
+            let runs: Vec<_> = s.paragraphs.iter().flat_map(|p| p.runs.iter()).collect();
+            let font_size = runs.iter().find_map(|r| r.font_size);
+            let font_family = families.get(&s.name).cloned();
+            let text_color = dominant_color(&runs);
+            let paragraphs = s
                 .paragraphs
                 .iter()
-                .flat_map(|p| p.runs.iter())
-                .find_map(|r| r.font_size);
+                .map(|p| p.runs.iter().map(|r| r.text.as_str()).collect::<String>())
+                .filter(|t| !t.trim().is_empty())
+                .collect();
             SlideElement {
                 name: s.name,
                 kind,
@@ -51,6 +60,9 @@ fn parse_slide(index: usize, xml: &str) -> Result<SlideData, Error> {
                     h: s.height,
                 },
                 font_size,
+                font_family,
+                text_color,
+                paragraphs,
             }
         })
         .collect();
@@ -58,6 +70,40 @@ fn parse_slide(index: usize, xml: &str) -> Result<SlideData, Error> {
     elements.extend(parse_images(xml));
 
     Ok(SlideData { index, elements })
+}
+
+fn dominant_color(runs: &[&TextRun]) -> Option<String> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for run in runs {
+        if let Some(ref c) = run.color {
+            *counts.entry(c.clone()).or_default() += 1;
+        }
+    }
+    counts.into_iter().max_by_key(|(_, n)| *n).map(|(c, _)| c)
+}
+
+// Returns a map of shape name → dominant font family, skipping theme font references
+// like "+mj-lt" (major Latin) and "+mn-lt" (minor Latin).
+fn parse_font_families(xml: &str) -> HashMap<String, String> {
+    let Ok(root) = XmlParser::parse_str(xml) else {
+        return HashMap::new();
+    };
+    let Some(sp_tree) = root.find_descendant("spTree") else {
+        return HashMap::new();
+    };
+    sp_tree
+        .find_all_descendants("sp")
+        .into_iter()
+        .filter_map(|sp| {
+            let name = sp.find_descendant("cNvPr")?.attr("name")?.to_string();
+            let typeface = sp
+                .find_all_descendants("latin")
+                .into_iter()
+                .filter_map(|e| e.attr("typeface").map(str::to_string))
+                .find(|t| !t.starts_with('+'))?;
+            Some((name, typeface))
+        })
+        .collect()
 }
 
 fn parse_images(xml: &str) -> Vec<SlideElement> {
@@ -92,6 +138,9 @@ fn parse_images(xml: &str) -> Vec<SlideElement> {
                 kind: ElementKind::Image,
                 rect: Rect { x, y, w, h },
                 font_size: None,
+                font_family: None,
+                text_color: None,
+                paragraphs: vec![],
             })
         })
         .collect()

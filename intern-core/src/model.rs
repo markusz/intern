@@ -37,6 +37,12 @@ pub struct SlideElement {
     pub rect: Rect,
     /// Hundredths of a point (e.g. 4400 = 44pt)
     pub font_size: Option<u32>,
+    /// Font family name (e.g. "Calibri"). None if inherited from theme or not detected.
+    pub font_family: Option<String>,
+    /// Dominant text color as hex RGB (e.g. "FF0000"). None if not set or inherited.
+    pub text_color: Option<String>,
+    /// Non-empty paragraph texts, in order.
+    pub paragraphs: Vec<String>,
 }
 
 #[derive(Debug)]

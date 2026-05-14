@@ -17,14 +17,14 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Lint a presentation and report violations
-    Lint(LintArgs),
+    /// Check a presentation and report violations
+    Check(CheckArgs),
     /// Fix violations in a presentation (writes in-place, backs up to <file>.bak)
     Fix(FixArgs),
 }
 
 #[derive(Args, Debug)]
-pub struct LintArgs {
+pub struct CheckArgs {
     pub file: PathBuf,
 
     /// Only run these rule IDs (comma-separated)

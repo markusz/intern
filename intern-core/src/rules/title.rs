@@ -6,6 +6,9 @@ use crate::rules::{Fix, Rule, Severity, Violation, ViolationMessage};
 pub struct TitleYRule;
 pub struct TitleXWidthRule;
 pub struct TitleFontSizeRule;
+pub struct DuplicateTitleRule;
+pub struct TitleLengthRule;
+pub struct TitleTrailingPunctRule;
 
 fn titles(slides: &[SlideData]) -> Vec<(usize, &SlideElement)> {
     slides
@@ -159,6 +162,99 @@ impl Rule for TitleFontSizeRule {
     }
 }
 
+fn title_text(e: &crate::model::SlideElement) -> String {
+    e.paragraphs.join(" ").trim().to_string()
+}
+
+const TITLE_WORD_LIMIT: usize = 10;
+
+impl Rule for DuplicateTitleRule {
+    fn id(&self) -> &'static str {
+        "DUPLICATE_TITLE"
+    }
+
+    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+        let ts = titles(slides);
+        let mut first: HashMap<String, usize> = HashMap::new();
+        let mut violations = Vec::new();
+        for (idx, e) in &ts {
+            let text = title_text(e);
+            if text.is_empty() {
+                continue;
+            }
+            match first.entry(text) {
+                std::collections::hash_map::Entry::Vacant(v) => {
+                    v.insert(idx + 1);
+                }
+                std::collections::hash_map::Entry::Occupied(o) => {
+                    violations.push(Violation {
+                        rule_id: self.id(),
+                        slide: Some(idx + 1),
+                        element: Some(e.name.clone()),
+                        message: ViolationMessage::DuplicateTitle {
+                            first_slide: *o.get(),
+                        },
+                        severity: Severity::Warning,
+                        fix: None,
+                    });
+                }
+            }
+        }
+        violations
+    }
+}
+
+impl Rule for TitleLengthRule {
+    fn id(&self) -> &'static str {
+        "TITLE_LENGTH"
+    }
+
+    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+        titles(slides)
+            .iter()
+            .filter_map(|(idx, e)| {
+                let text = title_text(e);
+                let word_count = text.split_whitespace().count();
+                (word_count > TITLE_WORD_LIMIT).then(|| Violation {
+                    rule_id: self.id(),
+                    slide: Some(idx + 1),
+                    element: Some(e.name.clone()),
+                    message: ViolationMessage::TitleTooLong {
+                        word_count,
+                        limit: TITLE_WORD_LIMIT,
+                    },
+                    severity: Severity::Warning,
+                    fix: None,
+                })
+            })
+            .collect()
+    }
+}
+
+impl Rule for TitleTrailingPunctRule {
+    fn id(&self) -> &'static str {
+        "TITLE_TRAILING_PUNCT"
+    }
+
+    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+        titles(slides)
+            .iter()
+            .filter_map(|(idx, e)| {
+                let text = title_text(e);
+                let last = text.chars().last()?;
+                matches!(last, '.' | '!' | '?').then(|| Violation {
+                    rule_id: self.id(),
+                    slide: Some(idx + 1),
+                    element: Some(e.name.clone()),
+                    message: ViolationMessage::TitleTrailingPunct { punct: last },
+                    severity: Severity::Warning,
+                    fix: None,
+                })
+            })
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,6 +264,10 @@ mod tests {
     const THRESHOLD: i64 = 19_050; // 2px at 96 DPI
 
     fn title_slide(slide_idx: usize, y: i64, font_size: Option<u32>) -> SlideData {
+        titled(slide_idx, y, font_size, "")
+    }
+
+    fn titled(slide_idx: usize, y: i64, font_size: Option<u32>, text: &str) -> SlideData {
         SlideData {
             index: slide_idx,
             elements: vec![SlideElement {
@@ -180,6 +280,13 @@ mod tests {
                     h: 1_143_000,
                 },
                 font_size,
+                font_family: None,
+                text_color: None,
+                paragraphs: if text.is_empty() {
+                    vec![]
+                } else {
+                    vec![text.to_string()]
+                },
             }],
         }
     }
@@ -267,6 +374,9 @@ mod tests {
                         h: 1_143_000,
                     },
                     font_size: None,
+                    font_family: None,
+                    text_color: None,
+                    paragraphs: vec![],
                 }],
             },
             SlideData {
@@ -281,6 +391,9 @@ mod tests {
                         h: 1_143_000,
                     },
                     font_size: None,
+                    font_family: None,
+                    text_color: None,
+                    paragraphs: vec![],
                 }],
             },
         ];
@@ -293,5 +406,104 @@ mod tests {
                 w_off_emu: None
             }
         ));
+    }
+
+    #[test]
+    fn duplicate_title_clean() {
+        let slides = vec![
+            titled(0, 274_638, None, "Intro"),
+            titled(1, 274_638, None, "Methods"),
+        ];
+        assert!(DuplicateTitleRule.check(&slides, THRESHOLD).is_empty());
+    }
+
+    #[test]
+    fn duplicate_title_fires_on_repeated_text() {
+        let slides = vec![
+            titled(0, 274_638, None, "Intro"),
+            titled(1, 274_638, None, "Intro"),
+        ];
+        let v = DuplicateTitleRule.check(&slides, THRESHOLD);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].slide, Some(2));
+        assert!(matches!(
+            v[0].message,
+            ViolationMessage::DuplicateTitle { first_slide: 1 }
+        ));
+    }
+
+    #[test]
+    fn duplicate_title_skips_empty_titles() {
+        let slides = vec![title_slide(0, 274_638, None), title_slide(1, 274_638, None)];
+        assert!(DuplicateTitleRule.check(&slides, THRESHOLD).is_empty());
+    }
+
+    #[test]
+    fn duplicate_title_flags_all_extra_occurrences() {
+        let slides = vec![
+            titled(0, 274_638, None, "Same"),
+            titled(1, 274_638, None, "Same"),
+            titled(2, 274_638, None, "Same"),
+        ];
+        let v = DuplicateTitleRule.check(&slides, THRESHOLD);
+        assert_eq!(v.len(), 2);
+    }
+
+    #[test]
+    fn title_length_clean() {
+        let slides = vec![titled(0, 274_638, None, "Short title")];
+        assert!(TitleLengthRule.check(&slides, THRESHOLD).is_empty());
+    }
+
+    #[test]
+    fn title_length_fires_over_limit() {
+        let long = "word ".repeat(11).trim().to_string();
+        let slides = vec![titled(0, 274_638, None, &long)];
+        let v = TitleLengthRule.check(&slides, THRESHOLD);
+        assert_eq!(v.len(), 1);
+        assert!(matches!(
+            v[0].message,
+            ViolationMessage::TitleTooLong {
+                word_count: 11,
+                limit: 10
+            }
+        ));
+    }
+
+    #[test]
+    fn title_length_at_limit_is_clean() {
+        let exact = "word ".repeat(10).trim().to_string();
+        let slides = vec![titled(0, 274_638, None, &exact)];
+        assert!(TitleLengthRule.check(&slides, THRESHOLD).is_empty());
+    }
+
+    #[test]
+    fn title_trailing_punct_clean() {
+        let slides = vec![titled(0, 274_638, None, "No trailing punct")];
+        assert!(TitleTrailingPunctRule.check(&slides, THRESHOLD).is_empty());
+    }
+
+    #[test]
+    fn title_trailing_punct_fires_on_period() {
+        let slides = vec![titled(0, 274_638, None, "Ends with a period.")];
+        let v = TitleTrailingPunctRule.check(&slides, THRESHOLD);
+        assert_eq!(v.len(), 1);
+        assert!(matches!(
+            v[0].message,
+            ViolationMessage::TitleTrailingPunct { punct: '.' }
+        ));
+    }
+
+    #[test]
+    fn title_trailing_punct_fires_on_exclamation() {
+        let slides = vec![titled(0, 274_638, None, "Wow!")];
+        assert_eq!(TitleTrailingPunctRule.check(&slides, THRESHOLD).len(), 1);
+    }
+
+    #[test]
+    fn title_trailing_punct_colon_is_ok() {
+        // Colons are legitimate in titles ("Results: 2024")
+        let slides = vec![titled(0, 274_638, None, "Results: 2024")];
+        assert!(TitleTrailingPunctRule.check(&slides, THRESHOLD).is_empty());
     }
 }

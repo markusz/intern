@@ -1,5 +1,7 @@
 pub mod columns;
 pub mod grid;
+pub mod layout;
+pub mod text;
 pub mod title;
 
 use std::fmt;
@@ -32,6 +34,11 @@ pub enum Fix {
         element_name: String,
         size: u32,
     },
+    /// Collapse consecutive spaces and trim leading/trailing whitespace in all text runs.
+    NormalizeWhitespace {
+        slide_idx: usize,
+        element_name: String,
+    },
 }
 
 impl Fix {
@@ -40,7 +47,8 @@ impl Fix {
             Fix::SetX { slide_idx, .. }
             | Fix::SetY { slide_idx, .. }
             | Fix::SetXW { slide_idx, .. }
-            | Fix::SetFontSize { slide_idx, .. } => *slide_idx,
+            | Fix::SetFontSize { slide_idx, .. }
+            | Fix::NormalizeWhitespace { slide_idx, .. } => *slide_idx,
         }
     }
 
@@ -49,7 +57,8 @@ impl Fix {
             Fix::SetX { element_name, .. }
             | Fix::SetY { element_name, .. }
             | Fix::SetXW { element_name, .. }
-            | Fix::SetFontSize { element_name, .. } => element_name,
+            | Fix::SetFontSize { element_name, .. }
+            | Fix::NormalizeWhitespace { element_name, .. } => element_name,
         }
     }
 }
@@ -86,6 +95,9 @@ impl fmt::Display for Fix {
                     size / 100
                 )
             }
+            Fix::NormalizeWhitespace { .. } => {
+                write!(f, "slide {slide} '{name}': normalize whitespace")
+            }
         }
     }
 }
@@ -116,6 +128,51 @@ pub enum ViolationMessage {
     },
     /// Title font size (in hundredths of a point) differs from the majority.
     TitleFontSize { actual: u32, expected: u32 },
+    /// Body/textbox font size (in hundredths of a point) differs from the majority.
+    BodyFontSize { actual: u32, expected: u32 },
+    /// Body/textbox font family differs from the majority.
+    BodyFontFamily { actual: String, expected: String },
+    /// Element rect extends outside the slide bounds.
+    ElementOverflow,
+    /// Body/textbox text color differs from the majority across slides.
+    BodyTextColor { actual: String, expected: String },
+    /// Paragraph contains two or more consecutive spaces.
+    DoubleSpace,
+    /// Paragraph has leading or trailing whitespace.
+    TrailingSpace,
+    /// Bullet paragraphs within an element have inconsistent first-letter capitalization.
+    BulletCapitalization { expected_uppercase: bool },
+    /// Slide has no title element.
+    TitleMissing,
+    /// Body or textbox element has no text content.
+    EmptyElement,
+    /// Paragraph text is ALL CAPS.
+    AllCaps,
+    /// Bullet ending punctuation is inconsistent with the deck majority.
+    BulletPunctuation { expected_punctuation: bool },
+    /// Bullet paragraph exceeds the word limit.
+    BulletTooLong { word_count: usize, limit: usize },
+    /// Title text is duplicated on another slide.
+    DuplicateTitle { first_slide: usize },
+    /// Title text exceeds the word limit.
+    TitleTooLong { word_count: usize, limit: usize },
+    /// Title ends with sentence-ending punctuation.
+    TitleTrailingPunct { punct: char },
+    /// Paragraph contains two consecutive identical words.
+    RepeatedWord { word: String },
+    /// Deck uses more distinct font families than the limit.
+    FontVariety { count: usize, limit: usize },
+    /// Deck uses more distinct text colors than the limit.
+    ColorVariety { count: usize, limit: usize },
+    /// Deck has more slides than the limit.
+    SlideCount { count: usize, limit: usize },
+    /// Element rect overlaps with another element on the same slide.
+    ElementOverlap { other_element: String },
+    /// Image aspect ratio differs from the deck majority.
+    ImageAspectRatio {
+        actual_ratio: f64,
+        expected_ratio: f64,
+    },
 }
 
 const EMU_PER_PX: f64 = 9525.0;
@@ -171,6 +228,68 @@ impl fmt::Display for ViolationMessage {
                 actual / 100,
                 expected / 100,
             ),
+            Self::BodyFontSize { actual, expected } => write!(
+                f,
+                "body font size {}pt, expected {}pt",
+                actual / 100,
+                expected / 100,
+            ),
+            Self::BodyFontFamily { actual, expected } => {
+                write!(f, "body font '{actual}', expected '{expected}'")
+            }
+            Self::ElementOverflow => write!(f, "element extends outside slide bounds"),
+            Self::BodyTextColor { actual, expected } => {
+                write!(f, "text color #{actual}, expected #{expected}")
+            }
+            Self::DoubleSpace => write!(f, "paragraph contains double spaces"),
+            Self::TrailingSpace => write!(f, "paragraph has leading or trailing whitespace"),
+            Self::BulletCapitalization { expected_uppercase } => {
+                if *expected_uppercase {
+                    write!(f, "bullet starts lowercase, expected uppercase")
+                } else {
+                    write!(f, "bullet starts uppercase, expected lowercase")
+                }
+            }
+            Self::TitleMissing => write!(f, "slide has no title element"),
+            Self::EmptyElement => write!(f, "element has no text content"),
+            Self::AllCaps => write!(f, "paragraph text is ALL CAPS"),
+            Self::BulletPunctuation {
+                expected_punctuation,
+            } => {
+                if *expected_punctuation {
+                    write!(f, "bullet ends without punctuation, expected punctuation")
+                } else {
+                    write!(f, "bullet ends with punctuation, expected none")
+                }
+            }
+            Self::BulletTooLong { word_count, limit } => {
+                write!(f, "bullet has {word_count} words, limit is {limit}")
+            }
+            Self::DuplicateTitle { first_slide } => {
+                write!(f, "title text also appears on slide {first_slide}")
+            }
+            Self::TitleTooLong { word_count, limit } => {
+                write!(f, "title has {word_count} words, limit is {limit}")
+            }
+            Self::TitleTrailingPunct { punct } => write!(f, "title ends with '{punct}'"),
+            Self::RepeatedWord { word } => write!(f, "repeated word '{word}'"),
+            Self::FontVariety { count, limit } => {
+                write!(f, "{count} distinct font families, limit is {limit}")
+            }
+            Self::ColorVariety { count, limit } => {
+                write!(f, "{count} distinct text colors, limit is {limit}")
+            }
+            Self::SlideCount { count, limit } => write!(f, "{count} slides, limit is {limit}"),
+            Self::ElementOverlap { other_element } => {
+                write!(f, "overlaps with '{other_element}'")
+            }
+            Self::ImageAspectRatio {
+                actual_ratio,
+                expected_ratio,
+            } => write!(
+                f,
+                "image aspect ratio {actual_ratio:.2} differs from majority {expected_ratio:.2}"
+            ),
         }
     }
 }
@@ -203,6 +322,27 @@ pub fn all_rules() -> Vec<Box<dyn Rule>> {
         Box::new(grid::GridVSpacingRule),
         Box::new(grid::GridRowTopRule),
         Box::new(grid::GridColLeftRule),
+        Box::new(text::BodyFontSizeRule),
+        Box::new(text::BodyFontFamilyRule),
+        Box::new(text::BodyTextColorRule),
+        Box::new(text::DoubleSpaceRule),
+        Box::new(text::TrailingSpaceRule),
+        Box::new(text::BulletCapitalizationRule),
+        Box::new(text::AllCapsRule),
+        Box::new(text::BulletPunctuationRule),
+        Box::new(text::BulletLengthRule),
+        Box::new(layout::TitlePresentRule),
+        Box::new(layout::EmptyElementRule),
+        Box::new(layout::ElementOverflowRule),
+        Box::new(layout::ElementOverlapRule),
+        Box::new(layout::ImageAspectRatioRule),
+        Box::new(layout::SlideCountRule),
+        Box::new(title::DuplicateTitleRule),
+        Box::new(title::TitleLengthRule),
+        Box::new(title::TitleTrailingPunctRule),
+        Box::new(text::RepeatedWordRule),
+        Box::new(text::FontVarietyRule),
+        Box::new(text::ColorVarietyRule),
     ]
 }
 
