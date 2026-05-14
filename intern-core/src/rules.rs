@@ -204,11 +204,14 @@ impl fmt::Display for ViolationMessage {
             Self::TitleYOff {
                 actual_emu,
                 expected_emu,
-            } => write!(
-                f,
-                "title Y {actual_emu} vs expected {expected_emu} ({:.1}px off)",
-                (*actual_emu - *expected_emu).abs() as f64 / EMU_PER_PX,
-            ),
+            } => {
+                let diff = (*actual_emu - *expected_emu) as f64 / EMU_PER_PX;
+                if diff > 0.0 {
+                    write!(f, "title is {diff:.1}px lower than on most slides")
+                } else {
+                    write!(f, "title is {:.1}px higher than on most slides", diff.abs())
+                }
+            }
             Self::TitlePositionSize {
                 x_off_emu,
                 w_off_emu,
@@ -239,49 +242,65 @@ impl fmt::Display for ViolationMessage {
             }
             Self::ElementOverflow => write!(f, "element extends outside slide bounds"),
             Self::BodyTextColor { actual, expected } => {
-                write!(f, "text color #{actual}, expected #{expected}")
+                write!(f, "text color #{actual}, most elements use #{expected}")
             }
             Self::DoubleSpace => write!(f, "paragraph contains double spaces"),
             Self::TrailingSpace => write!(f, "paragraph has leading or trailing whitespace"),
             Self::BulletCapitalization { expected_uppercase } => {
                 if *expected_uppercase {
-                    write!(f, "bullet starts lowercase, expected uppercase")
+                    write!(
+                        f,
+                        "bullet starts lowercase; most bullets in this deck start uppercase"
+                    )
                 } else {
-                    write!(f, "bullet starts uppercase, expected lowercase")
+                    write!(
+                        f,
+                        "bullet starts uppercase; most bullets in this deck start lowercase"
+                    )
                 }
             }
             Self::TitleMissing => write!(f, "slide has no title element"),
-            Self::EmptyElement => write!(f, "element has no text content"),
-            Self::AllCaps => write!(f, "paragraph text is ALL CAPS"),
+            Self::EmptyElement => write!(f, "no text content"),
+            Self::AllCaps => write!(f, "text is all caps — use title case or sentence case"),
             Self::BulletPunctuation {
                 expected_punctuation,
             } => {
                 if *expected_punctuation {
-                    write!(f, "bullet ends without punctuation, expected punctuation")
+                    write!(
+                        f,
+                        "bullet ends without punctuation; most bullets in this deck end with punctuation"
+                    )
                 } else {
-                    write!(f, "bullet ends with punctuation, expected none")
+                    write!(
+                        f,
+                        "bullet ends with punctuation; most bullets in this deck end without"
+                    )
                 }
             }
             Self::BulletTooLong { word_count, limit } => {
-                write!(f, "bullet has {word_count} words, limit is {limit}")
+                write!(f, "bullet is {word_count} words ({limit}-word limit)")
             }
             Self::DuplicateTitle { first_slide } => {
-                write!(f, "title text also appears on slide {first_slide}")
+                write!(f, "same title as slide {first_slide}")
             }
             Self::TitleTooLong { word_count, limit } => {
-                write!(f, "title has {word_count} words, limit is {limit}")
+                write!(f, "title is {word_count} words ({limit}-word limit)")
             }
-            Self::TitleTrailingPunct { punct } => write!(f, "title ends with '{punct}'"),
-            Self::RepeatedWord { word } => write!(f, "repeated word '{word}'"),
+            Self::TitleTrailingPunct { punct } => {
+                write!(f, "title ends with '{punct}' — remove it")
+            }
+            Self::RepeatedWord { word } => write!(f, "'{word}' appears twice in a row"),
             Self::FontVariety { count, limit } => {
-                write!(f, "{count} distinct font families, limit is {limit}")
+                write!(f, "deck uses {count} font families (max {limit})")
             }
             Self::ColorVariety { count, limit } => {
-                write!(f, "{count} distinct text colors, limit is {limit}")
+                write!(f, "deck uses {count} text colors (max {limit})")
             }
-            Self::SlideCount { count, limit } => write!(f, "{count} slides, limit is {limit}"),
+            Self::SlideCount { count, limit } => {
+                write!(f, "deck has {count} slides (max {limit})")
+            }
             Self::ElementOverlap { other_element } => {
-                write!(f, "overlaps with '{other_element}'")
+                write!(f, "bounding box overlaps with '{other_element}'")
             }
             Self::ImageAspectRatio {
                 actual_ratio,
@@ -381,7 +400,7 @@ mod tests {
             expected_emu: 274_638,
         };
         let s = m.to_string();
-        assert!(s.contains("title Y"), "{s}");
+        assert!(s.contains("lower than on most slides"), "{s}");
     }
 
     #[test]
