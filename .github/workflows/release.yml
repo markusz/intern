@@ -15,15 +15,19 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
+            cache: true
           - target: x86_64-apple-darwin
             os: macos-latest    # cross-compiled from M1; pure Rust, no C deps
             archive: tar.gz
+            cache: false        # rust-cache corrupts cargo on macOS runners
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
+            cache: false        # rust-cache corrupts cargo on macOS runners
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             archive: zip
+            cache: true
 
     steps:
       - uses: actions/checkout@v4
@@ -33,12 +37,9 @@ jobs:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
+        if: matrix.cache
         with:
           key: ${{ matrix.target }}
-
-      - name: fix cargo path (macOS)
-        if: runner.os == 'macOS'
-        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: build
         run: cargo build -p intern --release --target ${{ matrix.target }}
