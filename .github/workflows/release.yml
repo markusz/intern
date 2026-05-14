@@ -16,10 +16,10 @@ jobs:
             os: ubuntu-latest
             archive: tar.gz
           - target: x86_64-apple-darwin
-            os: macos-13        # Intel runner — native build
+            os: macos-latest    # cross-compiled from M1; pure Rust, no C deps
             archive: tar.gz
           - target: aarch64-apple-darwin
-            os: macos-latest    # M1 runner — native build
+            os: macos-latest
             archive: tar.gz
           - target: x86_64-pc-windows-msvc
             os: windows-latest
