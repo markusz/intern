@@ -76,3 +76,41 @@ jobs:
         with:
           files: intern-*
           generate_release_notes: true
+
+  homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: compute checksums
+        id: sha
+        run: |
+          echo "aarch64=$(shasum -a 256 intern-aarch64-apple-darwin.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "x86_64_mac=$(shasum -a 256 intern-x86_64-apple-darwin.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "linux=$(shasum -a 256 intern-x86_64-unknown-linux-gnu.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@v4
+        with:
+          repository: markusz/homebrew-intern
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-intern
+
+      - name: update formula
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          sed -i "s/version \".*\"/version \"$VERSION\"/" homebrew-intern/Formula/intern.rb
+          sed -i "/aarch64-apple-darwin/{n;s/sha256 \".*\"/sha256 \"${{ steps.sha.outputs.aarch64 }}\"/}" homebrew-intern/Formula/intern.rb
+          sed -i "/x86_64-apple-darwin/{n;s/sha256 \".*\"/sha256 \"${{ steps.sha.outputs.x86_64_mac }}\"/}" homebrew-intern/Formula/intern.rb
+          sed -i "/x86_64-unknown-linux-gnu/{n;s/sha256 \".*\"/sha256 \"${{ steps.sha.outputs.linux }}\"/}" homebrew-intern/Formula/intern.rb
+
+      - name: push formula
+        run: |
+          cd homebrew-intern
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/intern.rb
+          git commit -m "Update intern to ${GITHUB_REF_NAME}"
+          git push

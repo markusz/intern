@@ -30,21 +30,25 @@ $ intern check quarterly.pptx
 
 ## Download
 
-Pre-built binaries for every platform — no Rust installation needed.
+**macOS and Linux — Homebrew**
+```sh
+brew tap markusz/intern
+brew install intern
+```
 
-**macOS (Apple Silicon)**
+**macOS (Apple Silicon) — manual**
 ```sh
 curl -L https://github.com/markusz/intern/releases/latest/download/intern-aarch64-apple-darwin.tar.gz | tar xz
 sudo mv intern /usr/local/bin/
 ```
 
-**macOS (Intel)**
+**macOS (Intel) — manual**
 ```sh
 curl -L https://github.com/markusz/intern/releases/latest/download/intern-x86_64-apple-darwin.tar.gz | tar xz
 sudo mv intern /usr/local/bin/
 ```
 
-**Linux**
+**Linux — manual**
 ```sh
 curl -L https://github.com/markusz/intern/releases/latest/download/intern-x86_64-unknown-linux-gnu.tar.gz | tar xz
 sudo mv intern /usr/local/bin/
