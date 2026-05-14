@@ -1,10 +1,12 @@
 ![intern](logo.png)
 
+---
+
 > Because your real interns have better things to do than align your ppt boxes.
 
-**intern** is a linter for PowerPoint files. Point it at a `.pptx` and it tells you exactly what's wrong — misaligned boxes, inconsistent fonts, sloppy text, duplicate titles. It can fix geometric issues automatically.
+**intern** is a linter for PowerPoint files. Point it at a `.pptx` and it tells you exactly what's wrong - misaligned boxes, inconsistent fonts, sloppy text, duplicate titles. It can fix geometric issues automatically.
 
-Existing tools are proprietary Office add-ins or AI-powered web uploads. **intern** is the first open-source, rule-based CLI linter for PowerPoint — configurable, scriptable, and CI-friendly.
+Existing tools are proprietary Office add-ins or AI-powered web uploads. **intern** is the first open-source, rule-based CLI linter for PowerPoint - configurable, scriptable, and CI-friendly.
 
 ---
 
