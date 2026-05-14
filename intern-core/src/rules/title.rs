@@ -8,7 +8,9 @@ pub struct TitleYRule;
 pub struct TitleXWidthRule;
 pub struct TitleFontSizeRule;
 pub struct DuplicateTitleRule;
-pub struct TitleLengthRule;
+pub struct TitleLengthRule {
+    pub limit: usize,
+}
 pub struct TitleTrailingPunctRule;
 
 fn titles(slides: &[SlideData]) -> Vec<(usize, &SlideElement)> {
@@ -160,8 +162,6 @@ fn title_text(e: &crate::model::SlideElement) -> String {
     e.paragraphs.join(" ").trim().to_string()
 }
 
-const TITLE_WORD_LIMIT: usize = 10;
-
 impl Rule for DuplicateTitleRule {
     fn id(&self) -> &'static str {
         "DUPLICATE_TITLE"
@@ -209,13 +209,13 @@ impl Rule for TitleLengthRule {
             .filter_map(|(idx, e)| {
                 let text = title_text(e);
                 let word_count = text.split_whitespace().count();
-                (word_count > TITLE_WORD_LIMIT).then(|| Violation {
+                (word_count > self.limit).then(|| Violation {
                     rule_id: self.id(),
                     slide: Some(idx + 1),
                     element: Some(e.name.clone()),
                     message: ViolationMessage::TitleTooLong {
                         word_count,
-                        limit: TITLE_WORD_LIMIT,
+                        limit: self.limit,
                     },
                     severity: Severity::Warning,
                     fix: None,
@@ -446,14 +446,18 @@ mod tests {
     #[test]
     fn title_length_clean() {
         let slides = vec![titled(0, 274_638, None, "Short title")];
-        assert!(TitleLengthRule.check(&slides, THRESHOLD).is_empty());
+        assert!(
+            TitleLengthRule { limit: 10 }
+                .check(&slides, THRESHOLD)
+                .is_empty()
+        );
     }
 
     #[test]
     fn title_length_fires_over_limit() {
         let long = "word ".repeat(11).trim().to_string();
         let slides = vec![titled(0, 274_638, None, &long)];
-        let v = TitleLengthRule.check(&slides, THRESHOLD);
+        let v = TitleLengthRule { limit: 10 }.check(&slides, THRESHOLD);
         assert_eq!(v.len(), 1);
         assert!(matches!(
             v[0].message,
@@ -468,7 +472,11 @@ mod tests {
     fn title_length_at_limit_is_clean() {
         let exact = "word ".repeat(10).trim().to_string();
         let slides = vec![titled(0, 274_638, None, &exact)];
-        assert!(TitleLengthRule.check(&slides, THRESHOLD).is_empty());
+        assert!(
+            TitleLengthRule { limit: 10 }
+                .check(&slides, THRESHOLD)
+                .is_empty()
+        );
     }
 
     #[test]

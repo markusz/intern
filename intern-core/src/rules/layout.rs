@@ -6,7 +6,9 @@ pub struct EmptyElementRule;
 pub struct ElementOverflowRule;
 pub struct ElementOverlapRule;
 pub struct ImageAspectRatioRule;
-pub struct SlideCountRule;
+pub struct SlideCountRule {
+    pub limit: usize,
+}
 
 impl Rule for TitlePresentRule {
     fn id(&self) -> &'static str {
@@ -118,7 +120,6 @@ impl Rule for ElementOverlapRule {
 }
 
 const ASPECT_RATIO_TOLERANCE: f64 = 0.05;
-const SLIDE_LIMIT: usize = 20;
 
 impl Rule for ImageAspectRatioRule {
     fn id(&self) -> &'static str {
@@ -169,7 +170,7 @@ impl Rule for SlideCountRule {
     }
 
     fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
-        if slides.len() <= SLIDE_LIMIT {
+        if slides.len() <= self.limit {
             return vec![];
         }
         vec![Violation {
@@ -178,7 +179,7 @@ impl Rule for SlideCountRule {
             element: None,
             message: ViolationMessage::SlideCount {
                 count: slides.len(),
-                limit: SLIDE_LIMIT,
+                limit: self.limit,
             },
             severity: Severity::Warning,
             fix: None,
@@ -401,13 +402,13 @@ mod tests {
     #[test]
     fn slide_count_clean() {
         let slides: Vec<SlideData> = (0..20).map(|i| slide_n(i, vec![])).collect();
-        assert!(SlideCountRule.check(&slides, T).is_empty());
+        assert!(SlideCountRule { limit: 20 }.check(&slides, T).is_empty());
     }
 
     #[test]
     fn slide_count_fires_over_limit() {
         let slides: Vec<SlideData> = (0..21).map(|i| slide_n(i, vec![])).collect();
-        let v = SlideCountRule.check(&slides, T);
+        let v = SlideCountRule { limit: 20 }.check(&slides, T);
         assert_eq!(v.len(), 1);
         assert!(v[0].slide.is_none());
         assert!(matches!(

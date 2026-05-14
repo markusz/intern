@@ -1,4 +1,8 @@
-use intern_core::{model::EMU_PER_PX, reader::read_presentation, rules::all_rules};
+use intern_core::{
+    model::EMU_PER_PX,
+    reader::read_presentation,
+    rules::{Limits, all_rules},
+};
 
 fn main() {
     let path = std::env::args().nth(1).unwrap_or_else(|| {
@@ -15,7 +19,7 @@ fn main() {
     };
 
     let threshold = 2 * EMU_PER_PX; // 2px
-    let rules = all_rules();
+    let rules = all_rules(&Limits::default());
 
     let violations: Vec<_> = rules
         .iter()

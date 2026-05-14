@@ -4,7 +4,7 @@
 //! and then asserts on what violations (or lack thereof) the rules produce.
 
 use intern_core::reader::read_presentation;
-use intern_core::rules::{Fix, all_rules};
+use intern_core::rules::{Fix, Limits, all_rules};
 use intern_core::writer::apply_fixes;
 use ppt_rs::generator::{Shape, ShapeType, SlideContent};
 use ppt_rs::generator::{SlideLayout, create_pptx_with_content};
@@ -24,7 +24,7 @@ fn cleanup(path: &str) {
 
 fn fixes_for(path: &str) -> Vec<Fix> {
     let slides = read_presentation(path).expect("read pptx");
-    all_rules()
+    all_rules(&Limits::default())
         .iter()
         .flat_map(|r| r.check(&slides, THRESHOLD))
         .filter_map(|v| v.fix)
@@ -37,7 +37,7 @@ fn shape_at(name: &str, x: u32, y: u32, w: u32, h: u32) -> Shape {
 
 fn violations_for(path: &str, rule_id: &str) -> Vec<intern_core::rules::Violation> {
     let slides = read_presentation(path).expect("read pptx");
-    all_rules()
+    all_rules(&Limits::default())
         .iter()
         .filter(|r| r.id() == rule_id)
         .flat_map(|r| r.check(&slides, THRESHOLD))
@@ -46,7 +46,7 @@ fn violations_for(path: &str, rule_id: &str) -> Vec<intern_core::rules::Violatio
 
 fn all_violations(path: &str) -> Vec<intern_core::rules::Violation> {
     let slides = read_presentation(path).expect("read pptx");
-    all_rules()
+    all_rules(&Limits::default())
         .iter()
         .flat_map(|r| r.check(&slides, THRESHOLD))
         .collect()

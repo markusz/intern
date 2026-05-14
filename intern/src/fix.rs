@@ -22,6 +22,8 @@ pub fn run(args: FixArgs, cfg: Config) -> miette::Result<()> {
         slides.retain(|s| s.index + 1 == n);
     }
 
+    let all = rules::all_rules(&cfg.limits());
+
     let cfg_disable = cfg
         .rules
         .as_ref()
@@ -33,8 +35,6 @@ pub fn run(args: FixArgs, cfg: Config) -> miette::Result<()> {
     let mut disabled = args.disable.unwrap_or_default();
     disabled.extend(cfg_disable);
     let enabled_filter = args.rules.or(cfg_enable);
-
-    let all = rules::all_rules();
     let active: Vec<&dyn Rule> = all
         .iter()
         .map(|r| r.as_ref())

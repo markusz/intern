@@ -108,6 +108,13 @@ disable = ["SLIDE_COUNT", "IMAGE_ASPECT_RATIO"]
 [output]
 format = "table"
 group_by = "rule"
+
+[limits]
+title_words   = 10   # TITLE_LENGTH — max words in a slide title
+bullet_words  = 20   # BULLET_LENGTH — max words in a single bullet
+font_families = 2    # FONT_VARIETY — max distinct font families
+text_colors   = 3    # COLOR_VARIETY — max distinct text colors
+slide_count   = 20   # SLIDE_COUNT — max slides in the deck
 ```
 
 ---
@@ -181,10 +188,11 @@ intern-core = { git = "https://github.com/markusz/intern" }
 ```
 
 ```rust
-use intern_core::{reader::read_presentation, rules::all_rules, model::EMU_PER_PX};
+use intern_core::{reader::read_presentation, rules::{all_rules, Limits}, model::EMU_PER_PX};
 
 let slides = read_presentation("deck.pptx")?;
-let violations: Vec<_> = all_rules()
+let limits = Limits { slide_count: 30, ..Limits::default() };
+let violations: Vec<_> = all_rules(&limits)
     .iter()
     .flat_map(|r| r.check(&slides, 2 * EMU_PER_PX))
     .collect();

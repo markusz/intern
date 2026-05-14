@@ -12,10 +12,16 @@ pub struct TrailingSpaceRule;
 pub struct BulletCapitalizationRule;
 pub struct AllCapsRule;
 pub struct BulletPunctuationRule;
-pub struct BulletLengthRule;
+pub struct BulletLengthRule {
+    pub limit: usize,
+}
 pub struct RepeatedWordRule;
-pub struct FontVarietyRule;
-pub struct ColorVarietyRule;
+pub struct FontVarietyRule {
+    pub limit: usize,
+}
+pub struct ColorVarietyRule {
+    pub limit: usize,
+}
 
 fn body_elements(slides: &[SlideData]) -> Vec<(usize, &crate::model::SlideElement)> {
     slides
@@ -356,10 +362,6 @@ impl Rule for BulletPunctuationRule {
     }
 }
 
-const BULLET_WORD_LIMIT: usize = 20;
-const FONT_FAMILY_LIMIT: usize = 2;
-const TEXT_COLOR_LIMIT: usize = 3;
-
 impl Rule for BulletLengthRule {
     fn id(&self) -> &'static str {
         "BULLET_LENGTH"
@@ -374,14 +376,14 @@ impl Rule for BulletLengthRule {
                 }
                 for p in &e.paragraphs {
                     let word_count = p.split_whitespace().count();
-                    if word_count > BULLET_WORD_LIMIT {
+                    if word_count > self.limit {
                         violations.push(Violation {
                             rule_id: self.id(),
                             slide: Some(slide.index + 1),
                             element: Some(e.name.clone()),
                             message: ViolationMessage::BulletTooLong {
                                 word_count,
-                                limit: BULLET_WORD_LIMIT,
+                                limit: self.limit,
                             },
                             severity: Severity::Warning,
                             fix: None,
@@ -442,7 +444,7 @@ impl Rule for FontVarietyRule {
             .flat_map(|s| s.elements.iter())
             .filter_map(|e| e.font_family.clone())
             .collect();
-        if fonts.len() <= FONT_FAMILY_LIMIT {
+        if fonts.len() <= self.limit {
             return vec![];
         }
         vec![Violation {
@@ -451,7 +453,7 @@ impl Rule for FontVarietyRule {
             element: None,
             message: ViolationMessage::FontVariety {
                 count: fonts.len(),
-                limit: FONT_FAMILY_LIMIT,
+                limit: self.limit,
             },
             severity: Severity::Warning,
             fix: None,
@@ -470,7 +472,7 @@ impl Rule for ColorVarietyRule {
             .flat_map(|s| s.elements.iter())
             .filter_map(|e| e.text_color.clone())
             .collect();
-        if colors.len() <= TEXT_COLOR_LIMIT {
+        if colors.len() <= self.limit {
             return vec![];
         }
         vec![Violation {
@@ -479,7 +481,7 @@ impl Rule for ColorVarietyRule {
             element: None,
             message: ViolationMessage::ColorVariety {
                 count: colors.len(),
-                limit: TEXT_COLOR_LIMIT,
+                limit: self.limit,
             },
             severity: Severity::Warning,
             fix: None,
@@ -869,7 +871,7 @@ mod tests {
                 vec!["Short bullet point"],
             )],
         )];
-        assert!(BulletLengthRule.check(&slides, T).is_empty());
+        assert!(BulletLengthRule { limit: 20 }.check(&slides, T).is_empty());
     }
 
     #[test]
@@ -879,7 +881,7 @@ mod tests {
             0,
             vec![body_with("B1", None, None, None, vec![long.as_str()])],
         )];
-        let v = BulletLengthRule.check(&slides, T);
+        let v = BulletLengthRule { limit: 20 }.check(&slides, T);
         assert_eq!(v.len(), 1);
         assert!(matches!(
             v[0].message,
@@ -905,7 +907,7 @@ mod tests {
             )],
         )];
         // Two long paragraphs in one element → still one violation (break after first).
-        assert_eq!(BulletLengthRule.check(&slides, T).len(), 1);
+        assert_eq!(BulletLengthRule { limit: 20 }.check(&slides, T).len(), 1);
     }
 
     #[test]
@@ -967,7 +969,7 @@ mod tests {
             slide(0, vec![body("B1", None, Some("Calibri"))]),
             slide(1, vec![body("B1", None, Some("Arial"))]),
         ];
-        assert!(FontVarietyRule.check(&slides, T).is_empty());
+        assert!(FontVarietyRule { limit: 2 }.check(&slides, T).is_empty());
     }
 
     #[test]
@@ -977,7 +979,7 @@ mod tests {
             slide(1, vec![body("B1", None, Some("Arial"))]),
             slide(2, vec![body("B1", None, Some("Times New Roman"))]),
         ];
-        let v = FontVarietyRule.check(&slides, T);
+        let v = FontVarietyRule { limit: 2 }.check(&slides, T);
         assert_eq!(v.len(), 1);
         assert!(v[0].slide.is_none());
         assert!(matches!(
@@ -993,7 +995,7 @@ mod tests {
             slide(1, vec![body("B1", None, None)]),
             slide(2, vec![body("B1", None, None)]),
         ];
-        assert!(FontVarietyRule.check(&slides, T).is_empty());
+        assert!(FontVarietyRule { limit: 2 }.check(&slides, T).is_empty());
     }
 
     #[test]
@@ -1003,7 +1005,7 @@ mod tests {
             slide(1, vec![body_with("B1", None, None, Some("FF0000"), vec![])]),
             slide(2, vec![body_with("B1", None, None, Some("0000FF"), vec![])]),
         ];
-        assert!(ColorVarietyRule.check(&slides, T).is_empty());
+        assert!(ColorVarietyRule { limit: 3 }.check(&slides, T).is_empty());
     }
 
     #[test]
@@ -1014,7 +1016,7 @@ mod tests {
             slide(2, vec![body_with("B1", None, None, Some("0000FF"), vec![])]),
             slide(3, vec![body_with("B1", None, None, Some("00FF00"), vec![])]),
         ];
-        let v = ColorVarietyRule.check(&slides, T);
+        let v = ColorVarietyRule { limit: 3 }.check(&slides, T);
         assert_eq!(v.len(), 1);
         assert!(v[0].slide.is_none());
         assert!(matches!(

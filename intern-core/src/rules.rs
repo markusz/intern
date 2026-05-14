@@ -343,7 +343,34 @@ pub trait Rule {
     fn check(&self, slides: &[SlideData], threshold: i64) -> Vec<Violation>;
 }
 
-pub fn all_rules() -> Vec<Box<dyn Rule>> {
+/// Configurable numeric limits for rules that enforce "must be ≤ N" policies.
+/// All fields have opinionated defaults matching common presentation standards.
+pub struct Limits {
+    /// Maximum words allowed in a slide title (default 10).
+    pub title_words: usize,
+    /// Maximum words allowed in a single bullet point (default 20).
+    pub bullet_words: usize,
+    /// Maximum distinct font families across the deck (default 2).
+    pub font_families: usize,
+    /// Maximum distinct text colors across the deck (default 3).
+    pub text_colors: usize,
+    /// Maximum number of slides in the deck (default 20).
+    pub slide_count: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            title_words: 10,
+            bullet_words: 20,
+            font_families: 2,
+            text_colors: 3,
+            slide_count: 20,
+        }
+    }
+}
+
+pub fn all_rules(limits: &Limits) -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(title::TitleYRule),
         Box::new(title::TitleXWidthRule),
@@ -363,19 +390,29 @@ pub fn all_rules() -> Vec<Box<dyn Rule>> {
         Box::new(text::BulletCapitalizationRule),
         Box::new(text::AllCapsRule),
         Box::new(text::BulletPunctuationRule),
-        Box::new(text::BulletLengthRule),
+        Box::new(text::BulletLengthRule {
+            limit: limits.bullet_words,
+        }),
         Box::new(layout::TitlePresentRule),
         Box::new(layout::EmptyElementRule),
         Box::new(layout::ElementOverflowRule),
         Box::new(layout::ElementOverlapRule),
         Box::new(layout::ImageAspectRatioRule),
-        Box::new(layout::SlideCountRule),
+        Box::new(layout::SlideCountRule {
+            limit: limits.slide_count,
+        }),
         Box::new(title::DuplicateTitleRule),
-        Box::new(title::TitleLengthRule),
+        Box::new(title::TitleLengthRule {
+            limit: limits.title_words,
+        }),
         Box::new(title::TitleTrailingPunctRule),
         Box::new(text::RepeatedWordRule),
-        Box::new(text::FontVarietyRule),
-        Box::new(text::ColorVarietyRule),
+        Box::new(text::FontVarietyRule {
+            limit: limits.font_families,
+        }),
+        Box::new(text::ColorVarietyRule {
+            limit: limits.text_colors,
+        }),
     ]
 }
 
