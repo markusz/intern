@@ -219,6 +219,10 @@ impl Rule for TrailingSpaceRule {
     }
 }
 
+fn is_majority(count: usize, total: usize) -> bool {
+    count > total / 2
+}
+
 fn first_alpha(s: &str) -> Option<char> {
     s.chars().find(|c| c.is_alphabetic())
 }
@@ -250,7 +254,7 @@ impl Rule for BulletCapitalizationRule {
         }
 
         let upper_count = all.iter().filter(|(u, _, _)| *u).count();
-        let majority_upper = upper_count > all.len() / 2;
+        let majority_upper = is_majority(upper_count, all.len());
 
         // One violation per element that has any paragraph deviating from the majority.
         let mut seen = HashSet::new();
@@ -330,7 +334,7 @@ impl Rule for BulletPunctuationRule {
         }
 
         let punct_count = bullets.iter().filter(|(p, _, _)| *p).count();
-        let majority_punct = punct_count > bullets.len() / 2;
+        let majority_punct = is_majority(punct_count, bullets.len());
 
         let mut seen = HashSet::new();
         let mut violations = Vec::new();

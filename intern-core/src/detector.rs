@@ -121,7 +121,10 @@ fn try_grid(slide: &SlideData, indices: &[usize]) -> Option<SlideLayout> {
         return None;
     }
 
-    if indices.len() * GRID_MIN_FILL_DENOM < rows.len() * cols.len() * GRID_MIN_FILL_NUMER {
+    let expected_cells = rows.len() * cols.len();
+    let filled_cells = indices.len();
+    let too_sparse = filled_cells * GRID_MIN_FILL_DENOM < expected_cells * GRID_MIN_FILL_NUMER;
+    if too_sparse {
         return None;
     }
 

@@ -7,6 +7,8 @@ pub struct GridVSpacingRule;
 pub struct GridRowTopRule;
 pub struct GridColLeftRule;
 
+use super::median;
+
 fn h_gaps_in_row(row: &[usize], elements: &[SlideElement]) -> Vec<i64> {
     let mut sorted = row.to_vec();
     sorted.sort_by_key(|&i| elements[i].rect.x);
@@ -23,15 +25,6 @@ fn v_gaps_in_col(col: &[usize], elements: &[SlideElement]) -> Vec<i64> {
         .windows(2)
         .map(|w| elements[w[1]].rect.y - elements[w[0]].rect.bottom())
         .collect()
-}
-
-fn median(values: &[i64]) -> Option<i64> {
-    if values.is_empty() {
-        return None;
-    }
-    let mut s = values.to_vec();
-    s.sort();
-    Some(s[s.len() / 2])
 }
 
 impl Rule for GridHSpacingRule {

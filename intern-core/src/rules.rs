@@ -6,6 +6,20 @@ pub mod title;
 
 use std::fmt;
 
+/// Returns the median of `values`, or `None` if empty.
+/// Sorts a copy, then picks the middle index. For even-length inputs this
+/// returns the upper-middle element, which makes alignment thresholds
+/// slightly stricter (rounds up rather than down).
+pub(crate) fn median(values: &[i64]) -> Option<i64> {
+    if values.is_empty() {
+        return None;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort();
+    let mid = sorted.len() / 2;
+    Some(sorted[mid])
+}
+
 use crate::model::SlideData;
 
 /// A concrete edit to apply to a PPTX file. All coordinates are in EMU.

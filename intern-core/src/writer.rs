@@ -224,10 +224,12 @@ fn local_name_str(e: &BytesStart<'_>) -> String {
     String::from_utf8_lossy(e.local_name().as_ref()).into_owned()
 }
 
+/// Strips the XML namespace prefix, returning only the local name.
+/// e.g. `a:off` → `off`, `p:sp` → `sp`, `off` → `off` (unchanged).
 fn local_name_bytes(name: &[u8]) -> &[u8] {
     name.iter()
         .rposition(|&b| b == b':')
-        .map_or(name, |i| &name[i + 1..])
+        .map_or(name, |colon_pos| &name[colon_pos + 1..])
 }
 
 fn attr_value(e: &BytesStart<'_>, local: &[u8]) -> Option<String> {

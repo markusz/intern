@@ -23,14 +23,7 @@ fn titles(slides: &[SlideData]) -> Vec<(usize, &SlideElement)> {
         .collect()
 }
 
-fn median(values: &[i64]) -> Option<i64> {
-    if values.is_empty() {
-        return None;
-    }
-    let mut s = values.to_vec();
-    s.sort();
-    Some(s[s.len() / 2])
-}
+use super::median;
 
 impl Rule for TitleYRule {
     fn id(&self) -> &'static str {

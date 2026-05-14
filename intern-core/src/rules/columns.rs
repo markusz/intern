@@ -6,14 +6,7 @@ pub struct ColumnLeftEdgeRule;
 pub struct ColumnTopEdgeRule;
 pub struct ColumnRightLeftEdgeRule;
 
-fn median(values: &[i64]) -> Option<i64> {
-    if values.is_empty() {
-        return None;
-    }
-    let mut s = values.to_vec();
-    s.sort();
-    Some(s[s.len() / 2])
-}
+use super::median;
 
 impl Rule for ColumnLeftEdgeRule {
     fn id(&self) -> &'static str {
