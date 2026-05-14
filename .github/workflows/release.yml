@@ -36,6 +36,10 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
+      - name: fix cargo path (macOS)
+        if: runner.os == 'macOS'
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       - name: build
         run: cargo build -p intern --release --target ${{ matrix.target }}
 
