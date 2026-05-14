@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
-use crate::model::{ElementKind, SlideData};
+use crate::model::{ElementKind, SlideData, SlideElement};
 use crate::rules::{Fix, Rule, Severity, Violation, ViolationMessage};
 
 pub struct BodyFontSizeRule;
@@ -223,6 +223,15 @@ fn first_alpha(s: &str) -> Option<char> {
     s.chars().find(|c| c.is_alphabetic())
 }
 
+fn bullet_capitalizations(
+    slide_idx: usize,
+    e: &SlideElement,
+) -> impl Iterator<Item = (bool, usize, &str)> {
+    e.paragraphs
+        .iter()
+        .filter_map(move |p| first_alpha(p).map(|c| (c.is_uppercase(), slide_idx, e.name.as_str())))
+}
+
 impl Rule for BulletCapitalizationRule {
     fn id(&self) -> &'static str {
         "BULLET_CAPITALIZATION"
@@ -231,14 +240,9 @@ impl Rule for BulletCapitalizationRule {
     fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
         let es = body_elements(slides);
 
-        // Collect (is_uppercase, slide_idx, element_name) per paragraph first letter.
         let all: Vec<(bool, usize, &str)> = es
             .iter()
-            .flat_map(|(idx, e)| {
-                e.paragraphs.iter().filter_map(move |p| {
-                    first_alpha(p).map(|c| (c.is_uppercase(), *idx, e.name.as_str()))
-                })
-            })
+            .flat_map(|(idx, e)| bullet_capitalizations(*idx, e))
             .collect();
 
         if all.len() < 2 {
@@ -249,7 +253,7 @@ impl Rule for BulletCapitalizationRule {
         let majority_upper = upper_count > all.len() / 2;
 
         // One violation per element that has any paragraph deviating from the majority.
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = HashSet::new();
         let mut violations = Vec::new();
         for (is_upper, idx, name) in &all {
             if *is_upper != majority_upper && seen.insert((*idx, *name)) {
@@ -328,7 +332,7 @@ impl Rule for BulletPunctuationRule {
         let punct_count = bullets.iter().filter(|(p, _, _)| *p).count();
         let majority_punct = punct_count > bullets.len() / 2;
 
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = HashSet::new();
         let mut violations = Vec::new();
         for (has_punct, idx, name) in &bullets {
             if *has_punct != majority_punct && seen.insert((*idx, *name)) {
@@ -429,7 +433,7 @@ impl Rule for FontVarietyRule {
     }
 
     fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
-        let fonts: std::collections::HashSet<String> = slides
+        let fonts: HashSet<String> = slides
             .iter()
             .flat_map(|s| s.elements.iter())
             .filter_map(|e| e.font_family.clone())
@@ -457,7 +461,7 @@ impl Rule for ColorVarietyRule {
     }
 
     fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
-        let colors: std::collections::HashSet<String> = slides
+        let colors: HashSet<String> = slides
             .iter()
             .flat_map(|s| s.elements.iter())
             .filter_map(|e| e.text_color.clone())

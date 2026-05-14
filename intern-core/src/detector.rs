@@ -1,5 +1,15 @@
 use crate::model::{ElementKind, SLIDE_HEIGHT_EMU, SLIDE_WIDTH_EMU, SlideData};
 
+// Two-column detection: columns may overlap by at most 5% of slide width before we reject the layout.
+const COLUMN_OVERLAP_TOLERANCE_EMU: i64 = SLIDE_WIDTH_EMU / 20;
+// Grid clustering: shapes within this distance (y-axis) are grouped into the same row.
+const GRID_ROW_TOLERANCE_EMU: i64 = SLIDE_HEIGHT_EMU / 15;
+// Grid clustering: shapes within this distance (x-axis) are grouped into the same column.
+const GRID_COL_TOLERANCE_EMU: i64 = SLIDE_WIDTH_EMU / 15;
+// Grid density: require at least 2/3 of expected cells to be filled before treating as a grid.
+const GRID_MIN_FILL_NUMER: usize = 2;
+const GRID_MIN_FILL_DENOM: usize = 3;
+
 pub enum SlideLayout {
     TwoColumn {
         left: Vec<usize>,
@@ -58,7 +68,7 @@ fn try_two_column(slide: &SlideData, indices: &[usize]) -> Option<SlideLayout> {
     // Reject if columns heavily overlap (more than 5% of slide width)
     let left_max_right = left.iter().map(|&i| slide.elements[i].rect.right()).max()?;
     let right_min_left = right.iter().map(|&i| slide.elements[i].rect.x).min()?;
-    if right_min_left < left_max_right - SLIDE_WIDTH_EMU / 20 {
+    if right_min_left < left_max_right - COLUMN_OVERLAP_TOLERANCE_EMU {
         return None;
     }
 
@@ -66,8 +76,8 @@ fn try_two_column(slide: &SlideData, indices: &[usize]) -> Option<SlideLayout> {
 }
 
 fn try_grid(slide: &SlideData, indices: &[usize]) -> Option<SlideLayout> {
-    let row_tol = SLIDE_HEIGHT_EMU / 15;
-    let col_tol = SLIDE_WIDTH_EMU / 15;
+    let row_tol = GRID_ROW_TOLERANCE_EMU;
+    let col_tol = GRID_COL_TOLERANCE_EMU;
 
     let mut by_y = indices.to_vec();
     by_y.sort_by_key(|&i| slide.elements[i].rect.y);
@@ -111,8 +121,7 @@ fn try_grid(slide: &SlideData, indices: &[usize]) -> Option<SlideLayout> {
         return None;
     }
 
-    // Require at least 2/3 of expected cells to be filled
-    if indices.len() < rows.len() * cols.len() * 2 / 3 {
+    if indices.len() * GRID_MIN_FILL_DENOM < rows.len() * cols.len() * GRID_MIN_FILL_NUMER {
         return None;
     }
 

@@ -1,3 +1,5 @@
+use std::process;
+
 use intern_core::{model, reader, rules, writer};
 use miette::IntoDiagnostic;
 use rules::Rule;
@@ -65,7 +67,7 @@ pub fn run(args: FixArgs, cfg: Config) -> miette::Result<()> {
             println!("  {fix}");
         }
         if args.check {
-            std::process::exit(1);
+            process::exit(1);
         }
         return Ok(());
     }

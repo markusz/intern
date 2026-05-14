@@ -1,6 +1,8 @@
+use std::fs;
+use std::path::Path;
+
 use miette::{Context, IntoDiagnostic};
 use serde::Deserialize;
-use std::path::Path;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct Config {
@@ -24,7 +26,7 @@ pub struct OutputConfig {
 impl Config {
     pub fn load(path: &Path) -> miette::Result<Self> {
         let display = path.display().to_string();
-        let content = std::fs::read_to_string(path)
+        let content = fs::read_to_string(path)
             .into_diagnostic()
             .wrap_err_with(|| format!("cannot read config '{display}'"))?;
         toml::from_str(&content)

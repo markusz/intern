@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use crate::model::{ElementKind, SlideData, SlideElement};
 use crate::rules::{Fix, Rule, Severity, Violation, ViolationMessage};
@@ -183,10 +184,10 @@ impl Rule for DuplicateTitleRule {
                 continue;
             }
             match first.entry(text) {
-                std::collections::hash_map::Entry::Vacant(v) => {
+                Entry::Vacant(v) => {
                     v.insert(idx + 1);
                 }
-                std::collections::hash_map::Entry::Occupied(o) => {
+                Entry::Occupied(o) => {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(idx + 1),

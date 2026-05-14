@@ -1,11 +1,29 @@
 use crate::detector::{SlideLayout, detect};
-use crate::model::SlideData;
+use crate::model::{SlideData, SlideElement};
 use crate::rules::{Fix, Rule, Severity, Violation, ViolationMessage};
 
 pub struct GridHSpacingRule;
 pub struct GridVSpacingRule;
 pub struct GridRowTopRule;
 pub struct GridColLeftRule;
+
+fn h_gaps_in_row(row: &[usize], elements: &[SlideElement]) -> Vec<i64> {
+    let mut sorted = row.to_vec();
+    sorted.sort_by_key(|&i| elements[i].rect.x);
+    sorted
+        .windows(2)
+        .map(|w| elements[w[1]].rect.x - elements[w[0]].rect.right())
+        .collect()
+}
+
+fn v_gaps_in_col(col: &[usize], elements: &[SlideElement]) -> Vec<i64> {
+    let mut sorted = col.to_vec();
+    sorted.sort_by_key(|&i| elements[i].rect.y);
+    sorted
+        .windows(2)
+        .map(|w| elements[w[1]].rect.y - elements[w[0]].rect.bottom())
+        .collect()
+}
 
 fn median(values: &[i64]) -> Option<i64> {
     if values.is_empty() {
@@ -28,21 +46,12 @@ impl Rule for GridHSpacingRule {
                 continue;
             };
 
-            // Global expected gap = median of all inter-element horizontal gaps across rows.
-            // Using a global value catches cross-row inconsistency (e.g. row 0 gap 400px,
-            // row 1 gap 200px) which per-row medians would miss when each row has only one gap.
-            // SAFETY: all indices in rows/cols come from detect(), which enumerates slide.elements.
+            // Global expected gap = median across all rows. Using a global value catches
+            // cross-row inconsistency that per-row medians miss when rows have only one gap.
             let all_gaps: Vec<i64> = rows
                 .iter()
                 .filter(|row| row.len() >= 2)
-                .flat_map(|row| {
-                    let mut sorted = row.clone();
-                    sorted.sort_by_key(|&i| slide.elements[i].rect.x);
-                    sorted
-                        .windows(2)
-                        .map(|w| slide.elements[w[1]].rect.x - slide.elements[w[0]].rect.right())
-                        .collect::<Vec<_>>()
-                })
+                .flat_map(|row| h_gaps_in_row(row, &slide.elements))
                 .collect();
 
             let Some(exp) = median(&all_gaps) else {
@@ -94,18 +103,10 @@ impl Rule for GridVSpacingRule {
                 continue;
             };
 
-            // SAFETY: all indices in rows/cols come from detect(), which enumerates slide.elements.
             let all_gaps: Vec<i64> = cols
                 .iter()
                 .filter(|col| col.len() >= 2)
-                .flat_map(|col| {
-                    let mut sorted = col.clone();
-                    sorted.sort_by_key(|&i| slide.elements[i].rect.y);
-                    sorted
-                        .windows(2)
-                        .map(|w| slide.elements[w[1]].rect.y - slide.elements[w[0]].rect.bottom())
-                        .collect::<Vec<_>>()
-                })
+                .flat_map(|col| v_gaps_in_col(col, &slide.elements))
                 .collect();
 
             let Some(exp) = median(&all_gaps) else {

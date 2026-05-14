@@ -3,6 +3,8 @@ mod config;
 mod fix;
 mod report;
 
+use std::process;
+
 use clap::Parser;
 use cli::{CheckArgs, Cli, Command, GroupBy, OutputFormat};
 use config::Config;
@@ -103,5 +105,5 @@ fn run_check(args: CheckArgs, cfg: Config) -> miette::Result<()> {
 
     report::print_violations(&violations, group_by, format);
 
-    std::process::exit(if violations.is_empty() { 0 } else { 1 });
+    process::exit(if violations.is_empty() { 0 } else { 1 });
 }

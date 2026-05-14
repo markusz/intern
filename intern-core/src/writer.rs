@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::fs;
+use std::io::{Cursor, Read, Write};
+use std::str::from_utf8;
 
 use quick_xml::events::{BytesStart, BytesText, Event};
 use quick_xml::reader::Reader as XmlReader;
@@ -17,7 +19,7 @@ pub fn apply_fixes(path: &str, fixes: &[Fix]) -> Result<(), Error> {
     }
 
     let bak = format!("{path}.bak");
-    std::fs::copy(path, &bak).map_err(|e| Error::Write {
+    fs::copy(path, &bak).map_err(|e| Error::Write {
         path: path.to_owned(),
         message: format!("cannot create backup: {e}"),
     })?;
@@ -25,7 +27,7 @@ pub fn apply_fixes(path: &str, fixes: &[Fix]) -> Result<(), Error> {
     let result = rewrite_zip(path, fixes);
     if result.is_err() {
         // Restore from backup on failure.
-        let _ = std::fs::copy(&bak, path);
+        let _ = fs::copy(&bak, path);
     }
     result
 }
@@ -36,26 +38,26 @@ fn rewrite_zip(path: &str, fixes: &[Fix]) -> Result<(), Error> {
         by_slide.entry(fix.slide_idx()).or_default().push(fix);
     }
 
-    let data = std::fs::read(path).map_err(|e| Error::Open {
+    let data = fs::read(path).map_err(|e| Error::Open {
+        path: path.to_owned(),
+        message: e.to_string(),
+    })?;
+    let mut archive = ZipArchive::new(Cursor::new(&data)).map_err(|e| Error::Open {
         path: path.to_owned(),
         message: e.to_string(),
     })?;
 
-    let mut archive = ZipArchive::new(std::io::Cursor::new(&data)).map_err(|e| Error::Open {
+    let werr = |msg: String| Error::Write {
         path: path.to_owned(),
-        message: e.to_string(),
-    })?;
+        message: msg,
+    };
 
     let mut out: Vec<u8> = Vec::with_capacity(data.len());
     {
-        let mut zip_out = zip::ZipWriter::new(std::io::Cursor::new(&mut out));
+        let mut zip_out = zip::ZipWriter::new(Cursor::new(&mut out));
 
         for i in 0..archive.len() {
-            let mut file = archive.by_index(i).map_err(|e| Error::Write {
-                path: path.to_owned(),
-                message: e.to_string(),
-            })?;
-
+            let mut file = archive.by_index(i).map_err(|e| werr(e.to_string()))?;
             let name = file.name().to_owned();
             let options = FileOptions::default().compression_method(file.compression());
 
@@ -63,53 +65,31 @@ fn rewrite_zip(path: &str, fixes: &[Fix]) -> Result<(), Error> {
                 && let Some(slide_fixes) = by_slide.get(&slide_idx)
             {
                 let mut xml = String::new();
-                file.read_to_string(&mut xml).map_err(|e| Error::Write {
-                    path: path.to_owned(),
-                    message: e.to_string(),
-                })?;
+                file.read_to_string(&mut xml)
+                    .map_err(|e| werr(e.to_string()))?;
                 let patched = patch_slide_xml(&xml, slide_fixes);
                 zip_out
                     .start_file(&name, options)
-                    .map_err(|e| Error::Write {
-                        path: path.to_owned(),
-                        message: e.to_string(),
-                    })?;
+                    .map_err(|e| werr(e.to_string()))?;
                 zip_out
                     .write_all(patched.as_bytes())
-                    .map_err(|e| Error::Write {
-                        path: path.to_owned(),
-                        message: e.to_string(),
-                    })?;
+                    .map_err(|e| werr(e.to_string()))?;
                 continue;
             }
 
             let mut bytes: Vec<u8> = Vec::new();
-            file.read_to_end(&mut bytes).map_err(|e| Error::Write {
-                path: path.to_owned(),
-                message: e.to_string(),
-            })?;
+            file.read_to_end(&mut bytes)
+                .map_err(|e| werr(e.to_string()))?;
             zip_out
                 .start_file(&name, options)
-                .map_err(|e| Error::Write {
-                    path: path.to_owned(),
-                    message: e.to_string(),
-                })?;
-            zip_out.write_all(&bytes).map_err(|e| Error::Write {
-                path: path.to_owned(),
-                message: e.to_string(),
-            })?;
+                .map_err(|e| werr(e.to_string()))?;
+            zip_out.write_all(&bytes).map_err(|e| werr(e.to_string()))?;
         }
 
-        zip_out.finish().map_err(|e| Error::Write {
-            path: path.to_owned(),
-            message: e.to_string(),
-        })?;
+        zip_out.finish().map_err(|e| werr(e.to_string()))?;
     }
 
-    std::fs::write(path, out).map_err(|e| Error::Write {
-        path: path.to_owned(),
-        message: e.to_string(),
-    })
+    fs::write(path, out).map_err(|e| werr(e.to_string()))
 }
 
 /// Converts "ppt/slides/slideN.xml" to the 0-based slide index N-1.
@@ -143,58 +123,12 @@ fn patch_slide_xml(xml: &str, fixes: &[&Fix]) -> String {
     loop {
         match reader.read_event() {
             Ok(Event::Eof) => break,
-
             Ok(Event::Start(e)) => {
-                match local_name_str(&e).as_str() {
-                    "sp" => {
-                        // Entering a new shape — clear fix until we see cNvPr.
-                        current_fix = None;
-                        writer.write_event(Event::Start(e)).ok();
-                    }
-                    "cNvPr" => {
-                        if let Some(name) = attr_value(&e, b"name") {
-                            current_fix = fix_map.get(&name).copied();
-                        }
-                        writer.write_event(Event::Start(e)).ok();
-                    }
-                    "t" => {
-                        in_text_run = matches!(current_fix, Some(Fix::NormalizeWhitespace { .. }));
-                        writer.write_event(Event::Start(e)).ok();
-                    }
-                    "rPr" | "defRPr" => {
-                        if let Some(fix) = current_fix {
-                            writer.write_event(Event::Start(patch_font(e, fix))).ok();
-                        } else {
-                            writer.write_event(Event::Start(e)).ok();
-                        }
-                    }
-                    _ => {
-                        writer.write_event(Event::Start(e)).ok();
-                    }
-                }
+                handle_start(e, &fix_map, &mut current_fix, &mut in_text_run, &mut writer);
             }
-
-            Ok(Event::Empty(e)) => match (local_name_str(&e).as_str(), current_fix) {
-                ("cNvPr", _) => {
-                    if let Some(name) = attr_value(&e, b"name") {
-                        current_fix = fix_map.get(&name).copied();
-                    }
-                    writer.write_event(Event::Empty(e)).ok();
-                }
-                ("off", Some(fix)) => {
-                    writer.write_event(Event::Empty(patch_off(e, fix))).ok();
-                }
-                ("ext", Some(fix)) => {
-                    writer.write_event(Event::Empty(patch_ext(e, fix))).ok();
-                }
-                ("rPr" | "defRPr", Some(fix)) => {
-                    writer.write_event(Event::Empty(patch_font(e, fix))).ok();
-                }
-                _ => {
-                    writer.write_event(Event::Empty(e)).ok();
-                }
-            },
-
+            Ok(Event::Empty(e)) => {
+                handle_empty(e, &fix_map, &mut current_fix, &mut writer);
+            }
             Ok(Event::End(e)) => {
                 match local_name_bytes(e.name().as_ref()) {
                     b"sp" => current_fix = None,
@@ -203,7 +137,6 @@ fn patch_slide_xml(xml: &str, fixes: &[&Fix]) -> String {
                 }
                 writer.write_event(Event::End(e)).ok();
             }
-
             Ok(Event::Text(e)) if in_text_run => {
                 if let Ok(raw) = e.unescape() {
                     let normalized = normalize_ws(&raw);
@@ -214,16 +147,77 @@ fn patch_slide_xml(xml: &str, fixes: &[&Fix]) -> String {
                     writer.write_event(Event::Text(e)).ok();
                 }
             }
-
             Ok(e) => {
                 writer.write_event(e).ok();
             }
-
             Err(_) => break,
         }
     }
 
     String::from_utf8(writer.into_inner()).unwrap_or_else(|_| xml.to_owned())
+}
+
+fn handle_start<'f>(
+    e: BytesStart<'_>,
+    fix_map: &'f HashMap<String, &'f Fix>,
+    current_fix: &mut Option<&'f Fix>,
+    in_text_run: &mut bool,
+    writer: &mut XmlWriter<Vec<u8>>,
+) {
+    match local_name_str(&e).as_str() {
+        "sp" => {
+            *current_fix = None;
+            writer.write_event(Event::Start(e)).ok();
+        }
+        "cNvPr" => {
+            if let Some(name) = attr_value(&e, b"name") {
+                *current_fix = fix_map.get(&name).copied();
+            }
+            writer.write_event(Event::Start(e)).ok();
+        }
+        "t" => {
+            *in_text_run = matches!(*current_fix, Some(Fix::NormalizeWhitespace { .. }));
+            writer.write_event(Event::Start(e)).ok();
+        }
+        "rPr" | "defRPr" => {
+            if let Some(fix) = *current_fix {
+                writer.write_event(Event::Start(patch_font(e, fix))).ok();
+            } else {
+                writer.write_event(Event::Start(e)).ok();
+            }
+        }
+        _ => {
+            writer.write_event(Event::Start(e)).ok();
+        }
+    }
+}
+
+fn handle_empty<'f>(
+    e: BytesStart<'_>,
+    fix_map: &'f HashMap<String, &'f Fix>,
+    current_fix: &mut Option<&'f Fix>,
+    writer: &mut XmlWriter<Vec<u8>>,
+) {
+    match (local_name_str(&e).as_str(), *current_fix) {
+        ("cNvPr", _) => {
+            if let Some(name) = attr_value(&e, b"name") {
+                *current_fix = fix_map.get(&name).copied();
+            }
+            writer.write_event(Event::Empty(e)).ok();
+        }
+        ("off", Some(fix)) => {
+            writer.write_event(Event::Empty(patch_off(e, fix))).ok();
+        }
+        ("ext", Some(fix)) => {
+            writer.write_event(Event::Empty(patch_ext(e, fix))).ok();
+        }
+        ("rPr" | "defRPr", Some(fix)) => {
+            writer.write_event(Event::Empty(patch_font(e, fix))).ok();
+        }
+        _ => {
+            writer.write_event(Event::Empty(e)).ok();
+        }
+    }
 }
 
 fn local_name_str(e: &BytesStart<'_>) -> String {
@@ -248,7 +242,7 @@ fn attr_value(e: &BytesStart<'_>, local: &[u8]) -> Option<String> {
 fn replace_attrs(e: BytesStart<'_>, replacements: &HashMap<&[u8], Vec<u8>>) -> BytesStart<'static> {
     let name_qname = e.name();
     let name_bytes = name_qname.as_ref();
-    let name_str = std::str::from_utf8(name_bytes).unwrap_or("");
+    let name_str = from_utf8(name_bytes).unwrap_or("");
     let name_len = name_str.len();
     let mut buf = name_str.to_owned();
 
@@ -259,8 +253,8 @@ fn replace_attrs(e: BytesStart<'_>, replacements: &HashMap<&[u8], Vec<u8>>) -> B
             .map(|v| v.as_slice())
             .unwrap_or_else(|| attr.value.as_ref());
 
-        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
-        let val = std::str::from_utf8(val_bytes).unwrap_or("");
+        let key = from_utf8(attr.key.as_ref()).unwrap_or("");
+        let val = from_utf8(val_bytes).unwrap_or("");
 
         buf.push(' ');
         buf.push_str(key);
