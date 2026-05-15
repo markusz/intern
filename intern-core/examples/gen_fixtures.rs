@@ -67,19 +67,20 @@ fn two_column_misaligned() {
     let right_x = SLIDE_W / 2 + MARGIN;
     let gap: u32 = 1_050_000;
 
+    let row_y = |n: u32| MARGIN + gap * n;
     let shapes: Vec<Shape> = vec![
         // Left column — intentionally misaligned X on some rows
-        rect("L1", left_x, MARGIN + gap * 0, col_w, col_h),
-        rect("L2", left_x + 95_250, MARGIN + gap * 1, col_w, col_h), // ~10px right
-        rect("L3", left_x, MARGIN + gap * 2, col_w, col_h),
-        rect("L4", left_x + 285_750, MARGIN + gap * 3, col_w, col_h), // ~30px right
-        rect("L5", left_x, MARGIN + gap * 4, col_w, col_h),
+        rect("L1", left_x, row_y(0), col_w, col_h),
+        rect("L2", left_x + 95_250, row_y(1), col_w, col_h), // ~10px right
+        rect("L3", left_x, row_y(2), col_w, col_h),
+        rect("L4", left_x + 285_750, row_y(3), col_w, col_h), // ~30px right
+        rect("L5", left_x, row_y(4), col_w, col_h),
         // Right column — perfectly aligned
-        rect("R1", right_x, MARGIN + gap * 0, col_w, col_h),
-        rect("R2", right_x, MARGIN + gap * 1, col_w, col_h),
-        rect("R3", right_x, MARGIN + gap * 2, col_w, col_h),
-        rect("R4", right_x, MARGIN + gap * 3, col_w, col_h),
-        rect("R5", right_x, MARGIN + gap * 4, col_w, col_h),
+        rect("R1", right_x, row_y(0), col_w, col_h),
+        rect("R2", right_x, row_y(1), col_w, col_h),
+        rect("R3", right_x, row_y(2), col_w, col_h),
+        rect("R4", right_x, row_y(3), col_w, col_h),
+        rect("R5", right_x, row_y(4), col_w, col_h),
     ];
 
     save(

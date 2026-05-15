@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod fix;
 mod report;
+mod ruleset;
 
 use std::process;
 
@@ -10,7 +11,6 @@ use cli::{CheckArgs, Cli, Command, GroupBy, OutputFormat};
 use config::Config;
 use intern_core::{model, reader, rules};
 use miette::IntoDiagnostic;
-use rules::Rule;
 
 fn main() -> miette::Result<()> {
     let cli = Cli::parse();
@@ -60,15 +60,7 @@ fn run_check(args: CheckArgs, cfg: Config) -> miette::Result<()> {
         }
     };
 
-    let all = rules::all_rules(&cfg.limits());
-
-    let cfg_disable = cfg
-        .rules
-        .as_ref()
-        .and_then(|r| r.disable.as_ref())
-        .cloned()
-        .unwrap_or_default();
-    let cfg_enable = cfg.rules.and_then(|r| r.enable);
+    let active = ruleset::select(&cfg, args.rules, args.disable)?;
 
     let path = args
         .file
@@ -80,23 +72,6 @@ fn run_check(args: CheckArgs, cfg: Config) -> miette::Result<()> {
     if let Some(n) = args.slide {
         slides.retain(|s| s.index + 1 == n);
     }
-
-    let mut disabled = args.disable.unwrap_or_default();
-    disabled.extend(cfg_disable);
-    let enabled_filter = args.rules.or(cfg_enable);
-    let active: Vec<&dyn Rule> = all
-        .iter()
-        .map(|r| r.as_ref())
-        .filter(|r| {
-            if disabled.iter().any(|d| d == r.id()) {
-                return false;
-            }
-            if let Some(ref ef) = enabled_filter {
-                return ef.iter().any(|e| e == r.id());
-            }
-            true
-        })
-        .collect();
 
     let violations: Vec<rules::Violation> = active
         .iter()

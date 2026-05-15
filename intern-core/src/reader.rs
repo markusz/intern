@@ -350,4 +350,56 @@ mod tests {
             ],
         );
     }
+
+    #[test]
+    fn parse_images_extracts_picture_geometry() {
+        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:pic>
+                    <p:nvPicPr><p:cNvPr id="4" name="Logo"/></p:nvPicPr>
+                    <p:spPr><a:xfrm><a:off x="100" y="200"/><a:ext cx="300" cy="400"/></a:xfrm></p:spPr>
+                </p:pic>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let imgs = parse_images(xml);
+        assert_eq!(imgs.len(), 1);
+        assert_eq!(imgs[0].name, "Logo");
+        assert_eq!(imgs[0].kind, ElementKind::Image);
+        assert_eq!(imgs[0].rect.x, 100);
+        assert_eq!(imgs[0].rect.y, 200);
+        assert_eq!(imgs[0].rect.w, 300);
+        assert_eq!(imgs[0].rect.h, 400);
+    }
+
+    #[test]
+    fn parse_images_skips_zero_sized_pictures() {
+        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:pic>
+                    <p:nvPicPr><p:cNvPr name="Empty"/></p:nvPicPr>
+                    <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm></p:spPr>
+                </p:pic>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        assert!(parse_images(xml).is_empty());
+    }
+
+    #[test]
+    fn parse_font_families_skips_theme_references() {
+        // The first run uses a theme reference ("+mn-lt"); only the explicit
+        // typeface should be reported.
+        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:sp>
+                    <p:nvSpPr><p:cNvPr name="Body 1"/></p:nvSpPr>
+                    <p:txBody><a:p>
+                        <a:r><a:rPr><a:latin typeface="+mn-lt"/></a:rPr></a:r>
+                        <a:r><a:rPr><a:latin typeface="Calibri"/></a:rPr></a:r>
+                    </a:p></p:txBody>
+                </p:sp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let fams = parse_font_families(xml);
+        assert_eq!(fams.get("Body 1").map(String::as_str), Some("Calibri"));
+    }
 }

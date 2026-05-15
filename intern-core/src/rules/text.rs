@@ -23,7 +23,7 @@ pub struct ColorVarietyRule {
     pub limit: usize,
 }
 
-fn body_elements(slides: &[SlideData]) -> Vec<(usize, &crate::model::SlideElement)> {
+fn body_elements(slides: &[SlideData]) -> Vec<(usize, &SlideElement)> {
     slides
         .iter()
         .flat_map(|s| {

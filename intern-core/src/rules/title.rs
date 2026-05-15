@@ -158,7 +158,7 @@ impl Rule for TitleFontSizeRule {
     }
 }
 
-fn title_text(e: &crate::model::SlideElement) -> String {
+fn title_text(e: &SlideElement) -> String {
     e.paragraphs.join(" ").trim().to_string()
 }
 

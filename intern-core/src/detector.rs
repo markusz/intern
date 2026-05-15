@@ -130,3 +130,113 @@ fn try_grid(slide: &SlideData, indices: &[usize]) -> Option<SlideLayout> {
 
     Some(SlideLayout::Grid { rows, cols })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Rect, SlideElement};
+
+    fn el(kind: ElementKind, x: i64, y: i64, w: i64, h: i64) -> SlideElement {
+        SlideElement {
+            name: "e".into(),
+            kind,
+            rect: Rect { x, y, w, h },
+            font_size: None,
+            font_family: None,
+            text_color: None,
+            paragraphs: vec![],
+        }
+    }
+
+    fn slide(elements: Vec<SlideElement>) -> SlideData {
+        SlideData { index: 0, elements }
+    }
+
+    #[test]
+    fn fewer_than_two_content_elements_is_other() {
+        let s = slide(vec![el(
+            ElementKind::Image,
+            100_000,
+            100_000,
+            500_000,
+            500_000,
+        )]);
+        assert!(matches!(detect(&s), SlideLayout::Other));
+    }
+
+    #[test]
+    fn title_and_body_do_not_count_as_content() {
+        let s = slide(vec![
+            el(ElementKind::Title, 0, 0, 500_000, 500_000),
+            el(ElementKind::Body, 0, 1_000_000, 500_000, 500_000),
+        ]);
+        assert!(matches!(detect(&s), SlideLayout::Other));
+    }
+
+    #[test]
+    fn two_column_detected_when_split_across_midpoint() {
+        let s = slide(vec![
+            el(ElementKind::TextBox, 400_000, 1_000_000, 1_000_000, 500_000),
+            el(
+                ElementKind::TextBox,
+                5_000_000,
+                1_000_000,
+                1_000_000,
+                500_000,
+            ),
+        ]);
+        match detect(&s) {
+            SlideLayout::TwoColumn { left, right } => {
+                assert_eq!(left, vec![0]);
+                assert_eq!(right, vec![1]);
+            }
+            _ => panic!("expected TwoColumn"),
+        }
+    }
+
+    #[test]
+    fn heavily_overlapping_columns_are_not_two_column() {
+        // The left element is wide enough to reach deep into the right half.
+        let s = slide(vec![
+            el(ElementKind::TextBox, 400_000, 1_000_000, 4_500_000, 500_000),
+            el(
+                ElementKind::TextBox,
+                4_400_000,
+                1_000_000,
+                1_000_000,
+                500_000,
+            ),
+        ]);
+        assert!(matches!(detect(&s), SlideLayout::Other));
+    }
+
+    #[test]
+    fn grid_detected_for_two_by_two() {
+        // All four elements sit right of the midpoint so the two-column
+        // detector finds an empty left column and falls through to grid.
+        let s = slide(vec![
+            el(ElementKind::Image, 5_000_000, 1_000_000, 1_000_000, 800_000),
+            el(ElementKind::Image, 7_000_000, 1_000_000, 1_000_000, 800_000),
+            el(ElementKind::Image, 5_000_000, 3_000_000, 1_000_000, 800_000),
+            el(ElementKind::Image, 7_000_000, 3_000_000, 1_000_000, 800_000),
+        ]);
+        match detect(&s) {
+            SlideLayout::Grid { rows, cols } => {
+                assert_eq!(rows.len(), 2);
+                assert_eq!(cols.len(), 2);
+            }
+            _ => panic!("expected Grid"),
+        }
+    }
+
+    #[test]
+    fn sparse_grid_is_other() {
+        // 3 elements spanning 2 rows × 3 columns — only half the cells filled.
+        let s = slide(vec![
+            el(ElementKind::Image, 5_000_000, 1_000_000, 1_000_000, 800_000),
+            el(ElementKind::Image, 8_000_000, 1_000_000, 1_000_000, 800_000),
+            el(ElementKind::Image, 6_500_000, 3_000_000, 1_000_000, 800_000),
+        ]);
+        assert!(matches!(detect(&s), SlideLayout::Other));
+    }
+}

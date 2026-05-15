@@ -2,7 +2,6 @@ use std::process;
 
 use intern_core::{model, reader, rules, writer};
 use miette::IntoDiagnostic;
-use rules::Rule;
 
 use crate::cli::FixArgs;
 use crate::config::Config;
@@ -22,32 +21,7 @@ pub fn run(args: FixArgs, cfg: Config) -> miette::Result<()> {
         slides.retain(|s| s.index + 1 == n);
     }
 
-    let all = rules::all_rules(&cfg.limits());
-
-    let cfg_disable = cfg
-        .rules
-        .as_ref()
-        .and_then(|r| r.disable.as_ref())
-        .cloned()
-        .unwrap_or_default();
-    let cfg_enable = cfg.rules.and_then(|r| r.enable);
-
-    let mut disabled = args.disable.unwrap_or_default();
-    disabled.extend(cfg_disable);
-    let enabled_filter = args.rules.or(cfg_enable);
-    let active: Vec<&dyn Rule> = all
-        .iter()
-        .map(|r| r.as_ref())
-        .filter(|r| {
-            if disabled.iter().any(|d| d == r.id()) {
-                return false;
-            }
-            if let Some(ref ef) = enabled_filter {
-                return ef.iter().any(|e| e == r.id());
-            }
-            true
-        })
-        .collect();
+    let active = crate::ruleset::select(&cfg, args.rules, args.disable)?;
 
     let violations: Vec<rules::Violation> = active
         .iter()

@@ -1,4 +1,4 @@
-use crate::model::{ElementKind, SLIDE_HEIGHT_EMU, SLIDE_WIDTH_EMU, SlideData};
+use crate::model::{ElementKind, Rect, SLIDE_HEIGHT_EMU, SLIDE_WIDTH_EMU, SlideData};
 use crate::rules::{Rule, Severity, Violation, ViolationMessage};
 
 pub struct TitlePresentRule;
@@ -85,7 +85,7 @@ impl Rule for ElementOverflowRule {
     }
 }
 
-fn rects_overlap(a: &crate::model::Rect, b: &crate::model::Rect) -> bool {
+fn rects_overlap(a: &Rect, b: &Rect) -> bool {
     a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 

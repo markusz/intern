@@ -67,7 +67,7 @@ fn rewrite_zip(path: &str, fixes: &[Fix]) -> Result<(), Error> {
                 let mut xml = String::new();
                 file.read_to_string(&mut xml)
                     .map_err(|e| werr(e.to_string()))?;
-                let patched = patch_slide_xml(&xml, slide_fixes);
+                let patched = patch_slide_xml(&xml, slide_fixes).map_err(&werr)?;
                 zip_out
                     .start_file(&name, options)
                     .map_err(|e| werr(e.to_string()))?;
@@ -108,7 +108,7 @@ fn parse_slide_idx(path: &str) -> Option<usize> {
 ///
 /// Because `cNvPr` always precedes `<a:off>` and `<a:rPr>`, the state machine
 /// sets `current_fix` before it needs to patch anything.
-fn patch_slide_xml(xml: &str, fixes: &[&Fix]) -> String {
+fn patch_slide_xml(xml: &str, fixes: &[&Fix]) -> Result<String, String> {
     let fix_map: HashMap<String, &Fix> = fixes
         .iter()
         .map(|f| (f.element_name().to_owned(), *f))
@@ -150,11 +150,13 @@ fn patch_slide_xml(xml: &str, fixes: &[&Fix]) -> String {
             Ok(e) => {
                 writer.write_event(e).ok();
             }
-            Err(_) => break,
+            // A parse error mid-stream would otherwise silently truncate the
+            // slide; propagate it so the fix is aborted and the backup restored.
+            Err(e) => return Err(format!("malformed slide XML: {e}")),
         }
     }
 
-    String::from_utf8(writer.into_inner()).unwrap_or_else(|_| xml.to_owned())
+    String::from_utf8(writer.into_inner()).map_err(|e| e.to_string())
 }
 
 fn handle_start<'f>(
@@ -377,7 +379,7 @@ mod tests {
             slide_idx: 0,
             element_name: "Body".into(),
         };
-        let result = patch_slide_xml(xml, &[&fix]);
+        let result = patch_slide_xml(xml, &[&fix]).unwrap();
         assert!(result.contains("hello world"), "got: {result}");
         assert!(!result.contains("hello  world"), "got: {result}");
     }
@@ -394,7 +396,7 @@ mod tests {
             slide_idx: 0,
             element_name: "Body".into(),
         };
-        let result = patch_slide_xml(xml, &[&fix]);
+        let result = patch_slide_xml(xml, &[&fix]).unwrap();
         assert!(result.contains(">trailing space<"), "got: {result}");
     }
 
@@ -410,7 +412,7 @@ mod tests {
             slide_idx: 0,
             element_name: "Body".into(),
         };
-        let result = patch_slide_xml(xml, &[&fix]);
+        let result = patch_slide_xml(xml, &[&fix]).unwrap();
         // Different shape — text should be untouched.
         assert!(result.contains("hello  world"), "got: {result}");
     }

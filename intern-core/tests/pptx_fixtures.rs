@@ -91,11 +91,13 @@ fn reader_returns_correct_slide_count() {
     assert_eq!(slides.len(), 3);
 }
 
+// Image XML parsing itself is covered by unit tests in reader.rs; this only
+// checks that a slide without any pictures still reads cleanly.
 #[test]
-fn reader_parses_images_from_raw_xml() {
+fn reader_handles_slide_without_images() {
     let slide = SlideContent::new("No images").layout(SlideLayout::Blank);
     let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
-    let path = write_tmp(&bytes, "image_parse");
+    let path = write_tmp(&bytes, "no_images");
     let result = read_presentation(&path);
     cleanup(&path);
     assert!(result.is_ok());
