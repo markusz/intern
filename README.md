@@ -119,11 +119,11 @@ format = "table"
 group_by = "rule"
 
 [limits]
-title_words   = 10   # TITLE_LENGTH - max words in a slide title
-bullet_words  = 20   # BULLET_LENGTH - max words in a single bullet
-font_families = 2    # FONT_VARIETY - max distinct font families
-text_colors   = 3    # COLOR_VARIETY - max distinct text colors
-slide_count   = 20   # SLIDE_COUNT - max slides in the deck
+TITLE_LENGTH  = 10   # max words in a slide title
+BULLET_LENGTH = 20   # max words in a single bullet
+FONT_VARIETY  = 2    # max distinct font families
+COLOR_VARIETY = 3    # max distinct text colors
+SLIDE_COUNT   = 20   # max slides in the deck
 ```
 
 ---

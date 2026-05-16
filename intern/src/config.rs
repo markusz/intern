@@ -14,12 +14,14 @@ pub struct Config {
     pub limits: Option<LimitsConfig>,
 }
 
+/// The `[limits]` section, keyed by rule id (e.g. `TITLE_LENGTH = 10`).
 #[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct LimitsConfig {
-    pub title_words: Option<usize>,
-    pub bullet_words: Option<usize>,
-    pub font_families: Option<usize>,
-    pub text_colors: Option<usize>,
+    pub title_length: Option<usize>,
+    pub bullet_length: Option<usize>,
+    pub font_variety: Option<usize>,
+    pub color_variety: Option<usize>,
     pub slide_count: Option<usize>,
 }
 
@@ -52,16 +54,16 @@ impl Config {
         let defaults = Limits::default();
         Limits {
             title_words: cfg
-                .and_then(|l| l.title_words)
+                .and_then(|l| l.title_length)
                 .unwrap_or(defaults.title_words),
             bullet_words: cfg
-                .and_then(|l| l.bullet_words)
+                .and_then(|l| l.bullet_length)
                 .unwrap_or(defaults.bullet_words),
             font_families: cfg
-                .and_then(|l| l.font_families)
+                .and_then(|l| l.font_variety)
                 .unwrap_or(defaults.font_families),
             text_colors: cfg
-                .and_then(|l| l.text_colors)
+                .and_then(|l| l.color_variety)
                 .unwrap_or(defaults.text_colors),
             slide_count: cfg
                 .and_then(|l| l.slide_count)
@@ -136,7 +138,7 @@ mod tests {
     fn limits_overrides_configured_fields() {
         let cfg = Config {
             limits: Some(LimitsConfig {
-                title_words: Some(5),
+                title_length: Some(5),
                 slide_count: Some(10),
                 ..LimitsConfig::default()
             }),
@@ -153,7 +155,7 @@ mod tests {
 
     #[test]
     fn limits_parsed_from_toml() {
-        let toml = "[limits]\ntitle_words = 6\nbullet_words = 15\n";
+        let toml = "[limits]\nTITLE_LENGTH = 6\nBULLET_LENGTH = 15\n";
         let cfg: Config = toml::from_str(toml).unwrap();
         let l = cfg.limits();
         assert_eq!(l.title_words, 6);
@@ -189,7 +191,7 @@ mod tests {
 
         let tight = Config {
             limits: Some(LimitsConfig {
-                title_words: Some(5),
+                title_length: Some(5),
                 ..LimitsConfig::default()
             }),
             ..Config::default()
@@ -203,7 +205,7 @@ mod tests {
 
         let loose = Config {
             limits: Some(LimitsConfig {
-                title_words: Some(7),
+                title_length: Some(7),
                 ..LimitsConfig::default()
             }),
             ..Config::default()
