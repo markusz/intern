@@ -1,6 +1,7 @@
-use intern_core::{model, reader, rules, writer};
+use intern_core::{rules, writer};
 use miette::IntoDiagnostic;
 
+use crate::analyze;
 use crate::cli::FixArgs;
 use crate::config::Config;
 use crate::input;
@@ -32,22 +33,10 @@ fn fix_one(
     cfg: &Config,
     selection: &Selection,
 ) -> miette::Result<()> {
-    let mut slides = reader::read_presentation(path).into_diagnostic()?;
-    let ignored = reader::ignored_slide_indices(path).into_diagnostic()?;
-    slides.retain(|s| !ignored.contains(&s.index));
-    if let Some(n) = slide {
-        slides.retain(|s| s.index + 1 == n);
-    }
-
-    let mut fixes: Vec<rules::Fix> = Vec::new();
-    for rule in &selection.rules {
-        let threshold = cfg.rule_threshold_px(rule.id(), global_px) as i64 * model::EMU_PER_PX;
-        fixes.extend(
-            rule.check(&slides, threshold)
-                .into_iter()
-                .filter_map(|v| v.fix),
-        );
-    }
+    let fixes: Vec<rules::Fix> = analyze::check_file(path, slide, global_px, cfg, selection)?
+        .into_iter()
+        .filter_map(|v| v.fix)
+        .collect();
 
     if fixes.is_empty() {
         println!("{path}: no fixable violations");

@@ -95,13 +95,14 @@ slide, so drop `--slide` for the full picture.
 ### Skip a slide that is intentionally different
 
 Section dividers, the title slide, a deliberately unique layout - exclude a slide
-from every check by adding one line to its **speaker notes**:
+by adding a line to its **speaker notes**:
 
 ```text
-intern: ignore
+intern: disable                        # skip every rule on this slide
+intern: disable TITLE_Y, GRID_ROW_TOP  # skip only these rules
 ```
 
-The slide is dropped before any rule runs, so it skews no baselines either.
+The slide is dropped before those rules run, so it skews no baselines either.
 
 ### Loosen or tighten alignment
 

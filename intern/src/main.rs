@@ -1,3 +1,4 @@
+mod analyze;
 mod cli;
 mod config;
 mod fix;
@@ -10,8 +11,7 @@ use std::process;
 use clap::Parser;
 use cli::{CheckArgs, Cli, Command, GroupBy, OutputFormat};
 use config::Config;
-use intern_core::{model, reader, rules};
-use miette::IntoDiagnostic;
+use intern_core::rules;
 
 fn main() -> miette::Result<()> {
     let cli = Cli::parse();
@@ -40,7 +40,7 @@ fn run_check(args: CheckArgs, cfg: Config) -> miette::Result<()> {
         let path = file
             .to_str()
             .ok_or_else(|| miette::miette!("invalid file path '{}'", file.display()))?;
-        let violations = check_file(path, args.slide, global_px, &cfg, &selection)?;
+        let violations = analyze::check_file(path, args.slide, global_px, &cfg, &selection)?;
         results.push((path.to_string(), violations));
     }
 
@@ -51,41 +51,6 @@ fn run_check(args: CheckArgs, cfg: Config) -> miette::Result<()> {
         .any(|v| v.severity == rules::Severity::Error);
     report::print_results(&results, group_by, format);
     process::exit(if has_error { 1 } else { 0 });
-}
-
-/// Reads one presentation, drops slides marked `intern: ignore`, runs the active
-/// rules each with its own threshold, and tags every violation with its configured
-/// severity.
-fn check_file(
-    path: &str,
-    slide: Option<usize>,
-    global_px: u32,
-    cfg: &Config,
-    selection: &ruleset::Selection,
-) -> miette::Result<Vec<rules::Violation>> {
-    let mut slides = reader::read_presentation(path).into_diagnostic()?;
-    let ignored = reader::ignored_slide_indices(path).into_diagnostic()?;
-    if !ignored.is_empty() {
-        eprintln!(
-            "{path}: skipped {} slide(s) marked 'intern: ignore'",
-            ignored.len()
-        );
-    }
-    slides.retain(|s| !ignored.contains(&s.index));
-    if let Some(n) = slide {
-        slides.retain(|s| s.index + 1 == n);
-    }
-
-    let mut violations = Vec::new();
-    for rule in &selection.rules {
-        let threshold = cfg.rule_threshold_px(rule.id(), global_px) as i64 * model::EMU_PER_PX;
-        let severity = cfg.rule_severity(rule.id());
-        for mut violation in rule.check(&slides, threshold) {
-            violation.severity = severity;
-            violations.push(violation);
-        }
-    }
-    Ok(violations)
 }
 
 fn resolve_group_by(cli: Option<GroupBy>, cfg: &Config) -> report::GroupBy {

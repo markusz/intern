@@ -253,25 +253,30 @@ fn slide_path_num(path: &str) -> Option<u32> {
         .ok()
 }
 
-// A speaker-note line of exactly `intern: ignore` (case-insensitive) marks a slide
-// for exclusion from every check.
-const IGNORE_MARKER: &str = "intern: ignore";
+/// An `intern: disable` directive parsed from a slide's speaker notes.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SlideExclusion {
+    /// `intern: disable` - the whole slide is excluded from every rule.
+    All,
+    /// `intern: disable RULE_A,RULE_B` - excluded only from the named rules.
+    Rules(Vec<String>),
+}
 
-/// Returns the 0-based indices of slides whose speaker notes carry the
-/// `intern: ignore` marker. Drop these before running rules so they affect neither
-/// reports nor baselines.
-pub fn ignored_slide_indices(path: &str) -> Result<Vec<usize>, Error> {
+/// Reads each slide's `intern: disable` speaker-note directive, keyed by 0-based
+/// slide index. Slides absent from the map carry no directive.
+pub fn slide_exclusions(path: &str) -> Result<HashMap<usize, SlideExclusion>, Error> {
     let pkg = Package::open(path).map_err(|e| Error::Open {
         path: path.to_string(),
         message: e.to_string(),
     })?;
-    let ignored = slide_order(&pkg)
+    let exclusions = slide_order(&pkg)
         .iter()
         .enumerate()
-        .filter(|(_, slide_path)| has_ignore_marker(&slide_notes(&pkg, slide_path)))
-        .map(|(idx, _)| idx)
+        .filter_map(|(idx, slide_path)| {
+            parse_exclusion(&slide_notes(&pkg, slide_path)).map(|ex| (idx, ex))
+        })
         .collect();
-    Ok(ignored)
+    Ok(exclusions)
 }
 
 // Reads the speaker-note text for a slide, or an empty string if it has none.
@@ -350,13 +355,44 @@ fn extract_notes_text(notes_xml: &str) -> String {
         .join("\n")
 }
 
-// True if any line of the notes is the ignore marker (case-insensitive, surrounding
-// whitespace ignored, optional space after the colon).
-fn has_ignore_marker(notes: &str) -> bool {
-    notes.lines().any(|line| {
-        let normalized = line.trim().to_ascii_lowercase();
-        normalized == IGNORE_MARKER || normalized == "intern:ignore"
-    })
+// Parses every `intern: disable` line in a slide's notes into one directive. A bare
+// line disables the whole slide; lines with rule ids accumulate into a rule list.
+fn parse_exclusion(notes: &str) -> Option<SlideExclusion> {
+    let mut rules: Vec<String> = Vec::new();
+    let mut seen = false;
+    for line in notes.lines() {
+        let Some(rest) = disable_directive_rest(line) else {
+            continue;
+        };
+        seen = true;
+        if rest.is_empty() {
+            return Some(SlideExclusion::All);
+        }
+        for id in rest.split(',') {
+            let id = id.trim();
+            if !id.is_empty() {
+                rules.push(id.to_ascii_uppercase());
+            }
+        }
+    }
+    seen.then_some(SlideExclusion::Rules(rules))
+}
+
+// If `line` is an `intern: disable` directive (case-insensitive, optional space
+// after the colon), returns the trimmed text after the keyword - empty for a bare
+// whole-slide directive.
+fn disable_directive_rest(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let prefix = ["intern: disable", "intern:disable"]
+        .into_iter()
+        .find(|p| lower.starts_with(p))?;
+    let rest = &trimmed[prefix.len()..];
+    if rest.is_empty() || rest.starts_with(char::is_whitespace) {
+        Some(rest.trim())
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -550,24 +586,49 @@ mod tests {
         let xml = r#"<p:notes xmlns:p="p" xmlns:a="a">
             <p:cSld><p:spTree><p:sp><p:txBody>
                 <a:p><a:r><a:t>first line</a:t></a:r></a:p>
-                <a:p><a:r><a:t>intern: ignore</a:t></a:r></a:p>
+                <a:p><a:r><a:t>intern: disable</a:t></a:r></a:p>
             </p:txBody></p:sp></p:spTree></p:cSld>
         </p:notes>"#;
-        assert_eq!(extract_notes_text(xml), "first line\nintern: ignore");
+        assert_eq!(extract_notes_text(xml), "first line\nintern: disable");
     }
 
     #[test]
-    fn has_ignore_marker_matches_a_marker_line() {
-        assert!(has_ignore_marker("notes here\n  intern: ignore  \nmore"));
-        assert!(has_ignore_marker("Intern: Ignore"));
-        assert!(has_ignore_marker("intern:ignore"));
+    fn parse_exclusion_bare_marker_disables_whole_slide() {
+        assert_eq!(
+            parse_exclusion("speaker notes\n  intern: disable  \nmore"),
+            Some(SlideExclusion::All),
+        );
+        assert_eq!(
+            parse_exclusion("Intern: Disable"),
+            Some(SlideExclusion::All)
+        );
     }
 
     #[test]
-    fn has_ignore_marker_ignores_prose_and_empty() {
-        assert!(!has_ignore_marker(""));
-        assert!(!has_ignore_marker(
-            "remember to tell the intern: ignore the typos"
-        ));
+    fn parse_exclusion_collects_named_rules() {
+        assert_eq!(
+            parse_exclusion("intern: disable TITLE_Y, grid_row_top"),
+            Some(SlideExclusion::Rules(vec![
+                "TITLE_Y".to_string(),
+                "GRID_ROW_TOP".to_string(),
+            ])),
+        );
+    }
+
+    #[test]
+    fn parse_exclusion_bare_line_wins_over_named() {
+        // A whole-slide directive anywhere in the notes overrides rule lists.
+        assert_eq!(
+            parse_exclusion("intern: disable TITLE_Y\nintern: disable"),
+            Some(SlideExclusion::All),
+        );
+    }
+
+    #[test]
+    fn parse_exclusion_none_without_a_directive() {
+        assert_eq!(parse_exclusion(""), None);
+        assert_eq!(parse_exclusion("just ordinary speaker notes"), None);
+        // "disable" must be its own keyword, not a prefix of another word.
+        assert_eq!(parse_exclusion("intern: disabled forever"), None);
     }
 }

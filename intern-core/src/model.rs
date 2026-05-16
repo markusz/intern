@@ -45,7 +45,7 @@ pub struct SlideElement {
     pub paragraphs: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SlideData {
     pub index: usize, // 0-based
     pub elements: Vec<SlideElement>,

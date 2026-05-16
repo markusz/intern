@@ -53,17 +53,23 @@ Not every rule is auto-fixable. Alignment, font-size, and whitespace rules carry
 concrete fix; the remaining text-quality and structural rules report the problem but
 leave the change to you. See the [rules reference](./rules.md).
 
-## Skipping a slide
+## Skipping checks on a slide
 
-To exclude a slide from every check - a title slide, a section divider, a
+To exclude a slide from **every** check - a title slide, a section divider, a
 deliberately different layout - add this line to its **speaker notes**:
 
 ```text
-intern: ignore
+intern: disable
 ```
 
-intern drops the slide before any rule runs, so it affects neither the report nor
-the deck-wide baselines (such as the median title position other slides are
+To exclude it from only **specific** rules, list their ids:
+
+```text
+intern: disable TITLE_Y, GRID_ROW_TOP
+```
+
+Either way the slide is dropped before those rules run, so it affects neither the
+report nor their baselines (such as the median title position the other slides are
 compared against).
 
 ## Use in CI
