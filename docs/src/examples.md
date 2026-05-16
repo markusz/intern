@@ -92,6 +92,17 @@ intern check deck.pptx --slide 4
 Slides count from 1. Deck-wide checks (like "all titles line up") need every
 slide, so drop `--slide` for the full picture.
 
+### Skip a slide that is intentionally different
+
+Section dividers, the title slide, a deliberately unique layout - exclude a slide
+from every check by adding one line to its **speaker notes**:
+
+```text
+intern: ignore
+```
+
+The slide is dropped before any rule runs, so it skews no baselines either.
+
 ### Loosen or tighten alignment
 
 ```sh
@@ -128,6 +139,18 @@ max_words = 8
 ```
 
 Full reference: [Configuration](./configuration.md).
+
+### Make a rule advisory instead of blocking
+
+Every rule is an *error* by default and fails CI. To keep a rule's findings visible
+without failing the build, set its severity to `warning`:
+
+```toml
+[rules.ALL_CAPS]
+severity = "warning"
+```
+
+`intern check` exits non-zero only when an error-severity violation exists.
 
 ### Your personal defaults
 

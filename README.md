@@ -122,6 +122,9 @@ group_by = "rule"
 [rules.TITLE_LENGTH]
 max_words = 8
 
+[rules.ALL_CAPS]
+severity = "warning"   # report it, but don't fail CI
+
 [rules.SLIDE_COUNT]
 enabled = false
 ```

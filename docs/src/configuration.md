@@ -20,7 +20,7 @@ auto-discovered files are used only when present.
 ## Example
 
 ```toml
-threshold_px = 2
+threshold_px = 2                        # global alignment tolerance
 
 disable = ["IMAGE_ASPECT_RATIO"]        # turn rules off in bulk
 # only  = ["TITLE_Y", "TITLE_X_WIDTH"]  # if set, ONLY these rules run
@@ -32,11 +32,14 @@ group_by = "rule"     # slide | rule
 [rules.TITLE_LENGTH]
 max_words = 8
 
-[rules.SLIDE_COUNT]
-enabled = false       # turn a single rule off
+[rules.ALL_CAPS]
+severity = "warning"  # report it, but don't fail CI
 
-[rules.BULLET_LENGTH]
-max_words = 25
+[rules.TITLE_Y]
+threshold = 1         # tighter tolerance, just for this rule
+
+[rules.SLIDE_COUNT]
+enabled = false       # turn a rule off entirely
 ```
 
 ## Per-rule tables
@@ -45,8 +48,12 @@ Each rule can be configured in its own `[rules.<RULE_ID>]` table. A rule with no
 table runs enabled with default settings.
 
 - `enabled = false` turns the rule off.
-- The remaining keys are that rule's own settings. The count-based rules take a
-  limit:
+- `severity` is `"error"` (the default) or `"warning"`. `intern check` exits
+  non-zero only when an **error** is found - warnings are reported but never fail
+  CI. Demote noisy rules to `"warning"` to keep them advisory.
+- `threshold` overrides the global `threshold_px` for that rule (alignment rules
+  only) - e.g. pixel-perfect titles alongside a looser grid.
+- The count-based rules take a limit:
 
   | Rule | Key |
   |---|---|

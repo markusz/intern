@@ -253,6 +253,112 @@ fn slide_path_num(path: &str) -> Option<u32> {
         .ok()
 }
 
+// A speaker-note line of exactly `intern: ignore` (case-insensitive) marks a slide
+// for exclusion from every check.
+const IGNORE_MARKER: &str = "intern: ignore";
+
+/// Returns the 0-based indices of slides whose speaker notes carry the
+/// `intern: ignore` marker. Drop these before running rules so they affect neither
+/// reports nor baselines.
+pub fn ignored_slide_indices(path: &str) -> Result<Vec<usize>, Error> {
+    let pkg = Package::open(path).map_err(|e| Error::Open {
+        path: path.to_string(),
+        message: e.to_string(),
+    })?;
+    let ignored = slide_order(&pkg)
+        .iter()
+        .enumerate()
+        .filter(|(_, slide_path)| has_ignore_marker(&slide_notes(&pkg, slide_path)))
+        .map(|(idx, _)| idx)
+        .collect();
+    Ok(ignored)
+}
+
+// Reads the speaker-note text for a slide, or an empty string if it has none.
+fn slide_notes(pkg: &Package, slide_path: &str) -> String {
+    let Some(rels_path) = rels_path_for(slide_path) else {
+        return String::new();
+    };
+    let Some(rels_xml) = pkg.get_part_string(&rels_path) else {
+        return String::new();
+    };
+    let Some(notes_path) = notes_target(&rels_xml) else {
+        return String::new();
+    };
+    match pkg.get_part_string(&notes_path) {
+        Some(notes_xml) => extract_notes_text(&notes_xml),
+        None => String::new(),
+    }
+}
+
+// Maps "ppt/slides/slideN.xml" to its relationship part
+// "ppt/slides/_rels/slideN.xml.rels".
+fn rels_path_for(slide_path: &str) -> Option<String> {
+    let (dir, file) = slide_path.rsplit_once('/')?;
+    Some(format!("{dir}/_rels/{file}.rels"))
+}
+
+// Finds the notesSlide relationship target in a slide's .rels XML, resolved to a
+// package-absolute part path.
+fn notes_target(rels_xml: &str) -> Option<String> {
+    let root = XmlParser::parse_str(rels_xml).ok()?;
+    let target = root
+        .find_all("Relationship")
+        .into_iter()
+        .filter(|r| {
+            r.attr("Type")
+                .map(|t| t.contains("notesSlide"))
+                .unwrap_or(false)
+        })
+        .find_map(|r| r.attr("Target"))?;
+    Some(resolve_part_path("ppt/slides", target))
+}
+
+// Resolves a relationship target (which may contain `../`) against the part's
+// directory into a package-absolute path.
+fn resolve_part_path(base_dir: &str, target: &str) -> String {
+    if let Some(stripped) = target.strip_prefix('/') {
+        return stripped.to_string();
+    }
+    let mut parts: Vec<&str> = base_dir.split('/').filter(|s| !s.is_empty()).collect();
+    for segment in target.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    parts.join("/")
+}
+
+// Concatenates the text of every paragraph in a notesSlide part, one line each.
+fn extract_notes_text(notes_xml: &str) -> String {
+    let Ok(root) = XmlParser::parse_str(notes_xml) else {
+        return String::new();
+    };
+    root.find_all_descendants("p")
+        .into_iter()
+        .map(|p| {
+            p.find_all_descendants("t")
+                .into_iter()
+                .map(|t| t.text.as_str())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// True if any line of the notes is the ignore marker (case-insensitive, surrounding
+// whitespace ignored, optional space after the colon).
+fn has_ignore_marker(notes: &str) -> bool {
+    notes.lines().any(|line| {
+        let normalized = line.trim().to_ascii_lowercase();
+        normalized == IGNORE_MARKER || normalized == "intern:ignore"
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,5 +507,67 @@ mod tests {
         </p:sld>"#;
         let fams = parse_font_families(xml);
         assert_eq!(fams.get("Body 1").map(String::as_str), Some("Calibri"));
+    }
+
+    #[test]
+    fn rels_path_for_maps_slide_to_its_rels() {
+        assert_eq!(
+            rels_path_for("ppt/slides/slide3.xml").as_deref(),
+            Some("ppt/slides/_rels/slide3.xml.rels"),
+        );
+    }
+
+    #[test]
+    fn resolve_part_path_collapses_parent_segments() {
+        assert_eq!(
+            resolve_part_path("ppt/slides", "../notesSlides/notesSlide3.xml"),
+            "ppt/notesSlides/notesSlide3.xml",
+        );
+    }
+
+    #[test]
+    fn resolve_part_path_strips_leading_slash() {
+        assert_eq!(
+            resolve_part_path("ppt/slides", "/ppt/notesSlides/n1.xml"),
+            "ppt/notesSlides/n1.xml",
+        );
+    }
+
+    #[test]
+    fn notes_target_finds_the_notes_relationship() {
+        let xml = r#"<Relationships xmlns="x">
+            <Relationship Id="rId1" Type="http://x/slideLayout" Target="../slideLayouts/sl1.xml"/>
+            <Relationship Id="rId2" Type="http://x/notesSlide" Target="../notesSlides/notesSlide1.xml"/>
+        </Relationships>"#;
+        assert_eq!(
+            notes_target(xml).as_deref(),
+            Some("ppt/notesSlides/notesSlide1.xml"),
+        );
+    }
+
+    #[test]
+    fn extract_notes_text_joins_paragraphs() {
+        let xml = r#"<p:notes xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree><p:sp><p:txBody>
+                <a:p><a:r><a:t>first line</a:t></a:r></a:p>
+                <a:p><a:r><a:t>intern: ignore</a:t></a:r></a:p>
+            </p:txBody></p:sp></p:spTree></p:cSld>
+        </p:notes>"#;
+        assert_eq!(extract_notes_text(xml), "first line\nintern: ignore");
+    }
+
+    #[test]
+    fn has_ignore_marker_matches_a_marker_line() {
+        assert!(has_ignore_marker("notes here\n  intern: ignore  \nmore"));
+        assert!(has_ignore_marker("Intern: Ignore"));
+        assert!(has_ignore_marker("intern:ignore"));
+    }
+
+    #[test]
+    fn has_ignore_marker_ignores_prose_and_empty() {
+        assert!(!has_ignore_marker(""));
+        assert!(!has_ignore_marker(
+            "remember to tell the intern: ignore the typos"
+        ));
     }
 }

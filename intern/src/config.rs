@@ -3,7 +3,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use intern_core::rules::Limits;
+use intern_core::rules::{Limits, Severity};
 use miette::{Context, IntoDiagnostic};
 use serde::Deserialize;
 
@@ -23,6 +23,8 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct RuleTable {
     pub enabled: Option<bool>,
+    pub severity: Option<Severity>,
+    pub threshold: Option<u32>,
     pub max_words: Option<usize>,
     pub max_families: Option<usize>,
     pub max_colors: Option<usize>,
@@ -59,17 +61,32 @@ impl Config {
         }
     }
 
+    /// The alignment tolerance (in pixels) for a rule: its own `threshold`, or the
+    /// global default when the rule has none.
+    pub fn rule_threshold_px(&self, id: &str, default_px: u32) -> u32 {
+        self.rule_table(id)
+            .and_then(|t| t.threshold)
+            .unwrap_or(default_px)
+    }
+
+    /// The severity of a rule: its configured `severity`, or `Error` by default.
+    pub fn rule_severity(&self, id: &str) -> Severity {
+        self.rule_table(id)
+            .and_then(|t| t.severity)
+            .unwrap_or(Severity::Error)
+    }
+
+    fn rule_table(&self, id: &str) -> Option<&RuleTable> {
+        self.rules.as_ref().and_then(|tables| tables.get(id))
+    }
+
     fn rule_limit(
         &self,
         id: &str,
         pick: impl Fn(&RuleTable) -> Option<usize>,
         default: usize,
     ) -> usize {
-        self.rules
-            .as_ref()
-            .and_then(|tables| tables.get(id))
-            .and_then(pick)
-            .unwrap_or(default)
+        self.rule_table(id).and_then(pick).unwrap_or(default)
     }
 
     /// Loads the highest-precedence config file that exists, or built-in defaults
@@ -177,6 +194,58 @@ mod tests {
     fn outdated_top_level_section_is_rejected() {
         // deny_unknown_fields: a pre-0.3 [limits] section fails loudly.
         assert!(toml::from_str::<Config>("[limits]\nTITLE_LENGTH = 6\n").is_err());
+    }
+
+    #[test]
+    fn rule_threshold_falls_back_to_global_default() {
+        assert_eq!(Config::default().rule_threshold_px("TITLE_Y", 2), 2);
+    }
+
+    #[test]
+    fn rule_threshold_uses_per_rule_override() {
+        let mut rules = HashMap::new();
+        rules.insert(
+            "TITLE_Y".to_string(),
+            RuleTable {
+                threshold: Some(5),
+                ..RuleTable::default()
+            },
+        );
+        let cfg = Config {
+            rules: Some(rules),
+            ..Config::default()
+        };
+        assert_eq!(cfg.rule_threshold_px("TITLE_Y", 2), 5);
+        assert_eq!(cfg.rule_threshold_px("GRID_ROW_TOP", 2), 2);
+    }
+
+    #[test]
+    fn rule_severity_defaults_to_error() {
+        assert_eq!(Config::default().rule_severity("TITLE_Y"), Severity::Error);
+    }
+
+    #[test]
+    fn rule_severity_uses_per_rule_override() {
+        let mut rules = HashMap::new();
+        rules.insert(
+            "ALL_CAPS".to_string(),
+            RuleTable {
+                severity: Some(Severity::Warning),
+                ..RuleTable::default()
+            },
+        );
+        let cfg = Config {
+            rules: Some(rules),
+            ..Config::default()
+        };
+        assert_eq!(cfg.rule_severity("ALL_CAPS"), Severity::Warning);
+        assert_eq!(cfg.rule_severity("TITLE_Y"), Severity::Error);
+    }
+
+    #[test]
+    fn severity_parsed_from_toml() {
+        let cfg: Config = toml::from_str("[rules.ALL_CAPS]\nseverity = \"warning\"\n").unwrap();
+        assert_eq!(cfg.rule_severity("ALL_CAPS"), Severity::Warning);
     }
 
     #[test]

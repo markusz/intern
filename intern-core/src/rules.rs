@@ -116,8 +116,8 @@ impl fmt::Display for Fix {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Severity {
     Warning,
     Error,

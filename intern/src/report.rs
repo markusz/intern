@@ -42,9 +42,35 @@ pub fn print_results(
         }
     }
     if multi {
-        let total: usize = results.iter().map(|(_, v)| v.len()).sum();
-        println!("\n{total} violation(s) across {} file(s)", results.len());
+        let mut total = 0;
+        let mut errors = 0;
+        for (_, violations) in results {
+            total += violations.len();
+            errors += err_warn(violations).0;
+        }
+        println!(
+            "\n{total} violation(s) ({errors} error, {} warning) across {} file(s)",
+            total - errors,
+            results.len(),
+        );
     }
+}
+
+/// Splits violations into (error count, warning count).
+fn err_warn(violations: &[Violation]) -> (usize, usize) {
+    let errors = violations
+        .iter()
+        .filter(|v| v.severity == Severity::Error)
+        .count();
+    (errors, violations.len() - errors)
+}
+
+fn summary(violations: &[Violation]) -> String {
+    let (errors, warnings) = err_warn(violations);
+    format!(
+        "{} violation(s) ({errors} error, {warnings} warning)",
+        violations.len()
+    )
 }
 
 fn print_table(violations: &[Violation], group_by: GroupBy) {
@@ -94,7 +120,7 @@ fn print_table(violations: &[Violation], group_by: GroupBy) {
     }
 
     println!("{table}");
-    println!("{} violation(s)", violations.len());
+    println!("{}", summary(violations));
 }
 
 fn print_text(violations: &[Violation], group_by: GroupBy) {
@@ -128,7 +154,7 @@ fn print_text_by_slide(violations: &[Violation]) {
         }
     }
 
-    println!("\n{} violation(s)", violations.len());
+    println!("\n{}", summary(violations));
 }
 
 fn print_text_by_rule(violations: &[Violation]) {
@@ -152,7 +178,7 @@ fn print_text_by_rule(violations: &[Violation]) {
         }
     }
 
-    println!("\n{} violation(s)", violations.len());
+    println!("\n{}", summary(violations));
 }
 
 #[derive(Serialize)]

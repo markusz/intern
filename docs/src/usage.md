@@ -20,7 +20,8 @@ No configuration is required to get started.
 ## `intern check`
 
 Reads each presentation and prints its violations. Exits `0` when every deck is
-clean, `1` when any violation is found.
+clean or has only warnings, and `1` when an error-severity violation is found (see
+[severity](./configuration.md#per-rule-tables)).
 
 | Flag | Default | Description |
 |---|---|---|
@@ -52,11 +53,24 @@ Not every rule is auto-fixable. Alignment, font-size, and whitespace rules carry
 concrete fix; the remaining text-quality and structural rules report the problem but
 leave the change to you. See the [rules reference](./rules.md).
 
+## Skipping a slide
+
+To exclude a slide from every check - a title slide, a section divider, a
+deliberately different layout - add this line to its **speaker notes**:
+
+```text
+intern: ignore
+```
+
+intern drops the slide before any rule runs, so it affects neither the report nor
+the deck-wide baselines (such as the median title position other slides are
+compared against).
+
 ## Use in CI
 
-`intern check` exits `0` when every deck is clean and `1` when it finds violations -
-wire that exit code straight into a pipeline. Point it at a directory to gate a
-whole folder of decks:
+`intern check` exits `0` when every deck is clean and `1` when it finds an
+error-severity violation - wire that exit code straight into a pipeline. Point it at
+a directory to gate a whole folder of decks:
 
 ```sh
 intern check slides/
