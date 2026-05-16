@@ -1,0 +1,12 @@
+[book]
+title = "intern"
+description = "A rule-based linter for PowerPoint files"
+authors = ["Markus Ziller"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/markusz/intern"
+edit-url-template = "https://github.com/markusz/intern/edit/main/docs/{path}"
