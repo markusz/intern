@@ -1,19 +1,26 @@
 # Command-line usage
 
-`intern` has two subcommands: `check` reports violations, `fix` repairs the ones it
-can.
+`intern` checks and fixes presentations. `check` reports violations, `fix` repairs
+the ones it can. `check` is the default action, so these two are equivalent:
 
 ```sh
-intern check deck.pptx    # check and print violations
-intern fix deck.pptx      # auto-fix violations in place
+intern deck.pptx
+intern check deck.pptx
+```
+
+Every command accepts multiple files and directories - a directory is expanded to
+the `.pptx` files directly inside it:
+
+```sh
+intern check slides/ extra.pptx
 ```
 
 No configuration is required to get started.
 
 ## `intern check`
 
-Reads a presentation and prints every violation. Exits `0` when clean, `1` when
-violations are found.
+Reads each presentation and prints its violations. Exits `0` when every deck is
+clean, `1` when any violation is found.
 
 | Flag | Default | Description |
 |---|---|---|
@@ -30,8 +37,8 @@ rather than silently ignored.
 
 ## `intern fix`
 
-Applies the suggested fix for every fixable violation, writing the file in place.
-The original is backed up to `<file>.bak`.
+Applies the suggested fix for every fixable violation, writing each file in place.
+The original is backed up next to it as `<file>.bak`.
 
 | Flag | Default | Description |
 |---|---|---|
@@ -40,7 +47,6 @@ The original is backed up to `<file>.bak`.
 | `--threshold <px>` | `2` | Alignment tolerance in pixels |
 | `--slide <n>` | all | Fix only slide `n` (1-based) |
 | `--dry-run` | off | Print what would change without writing |
-| `--check` | off | Exit `1` if any fix would be applied (CI gate) |
 
 Not every rule is auto-fixable. Alignment, font-size, and whitespace rules carry a
 concrete fix; the remaining text-quality and structural rules report the problem but
@@ -48,13 +54,16 @@ leave the change to you. See the [rules reference](./rules.md).
 
 ## Use in CI
 
+`intern check` exits `0` when every deck is clean and `1` when it finds violations -
+wire that exit code straight into a pipeline. Point it at a directory to gate a
+whole folder of decks:
+
 ```sh
-intern check deck.pptx --output json > violations.json
+intern check slides/
 ```
 
-The JSON output and the `0`/`1` exit code make `intern` straightforward to wire into
-a pipeline. To fail a build when a deck *could* be tidied up:
+JSON output is available for further processing:
 
 ```sh
-intern fix deck.pptx --check
+intern check deck.pptx --output json > violations.json
 ```

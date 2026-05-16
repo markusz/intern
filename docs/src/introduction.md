@@ -4,7 +4,8 @@
 
 **intern** is a rule-based linter for PowerPoint (`.pptx`) files. Point it at a deck
 and it tells you exactly what's wrong - misaligned boxes, inconsistent fonts, sloppy
-text, duplicate titles - and can fix geometric issues automatically.
+text, duplicate titles - and can automatically fix alignment, font-size, and
+whitespace problems.
 
 Existing tools are proprietary Office add-ins or AI-powered web uploads. **intern** is
 the first open-source, rule-based CLI linter for PowerPoint: configurable, scriptable,

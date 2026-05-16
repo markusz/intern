@@ -1,33 +1,41 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
+
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Parser, Debug)]
 #[command(
     name = "intern",
-    about = "Because your real interns have better things to do than align your ppt boxes"
+    about = "Because your real interns have better things to do than align your ppt boxes",
+    args_conflicts_with_subcommands = true,
+    subcommand_negates_reqs = true
 )]
 pub struct Cli {
-    #[command(subcommand)]
-    pub command: Command,
-
-    /// Path to config file (default: .intern.toml)
+    /// Load settings from a specific config file
     #[arg(long, global = true)]
     pub config: Option<PathBuf>,
+
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
+    #[command(flatten)]
+    pub check: CheckArgs,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Check a presentation and report violations
+    /// Check presentations and report violations (the default action)
     Check(CheckArgs),
-    /// Fix violations in a presentation (writes in-place, backs up to <file>.bak)
+    /// Fix violations in place, backing up each file to <file>.bak
     Fix(FixArgs),
 }
 
 #[derive(Args, Debug)]
 pub struct CheckArgs {
-    pub file: PathBuf,
+    /// Presentation files or directories (a directory expands to its .pptx files)
+    #[arg(required = true)]
+    pub files: Vec<PathBuf>,
 
-    /// Only run these rule IDs (comma-separated)
+    /// Run only these rule IDs (comma-separated)
     #[arg(long, value_delimiter = ',')]
     pub rules: Option<Vec<String>>,
 
@@ -54,9 +62,11 @@ pub struct CheckArgs {
 
 #[derive(Args, Debug)]
 pub struct FixArgs {
-    pub file: PathBuf,
+    /// Presentation files or directories (a directory expands to its .pptx files)
+    #[arg(required = true)]
+    pub files: Vec<PathBuf>,
 
-    /// Only run these rule IDs (comma-separated)
+    /// Run only these rule IDs (comma-separated)
     #[arg(long, value_delimiter = ',')]
     pub rules: Option<Vec<String>>,
 
@@ -72,13 +82,9 @@ pub struct FixArgs {
     #[arg(long)]
     pub slide: Option<usize>,
 
-    /// Print what would change without writing the file
+    /// Print what would change without writing
     #[arg(long)]
     pub dry_run: bool,
-
-    /// Exit 1 if any fixes would be applied (CI gate)
-    #[arg(long)]
-    pub check: bool,
 }
 
 #[derive(ValueEnum, Clone, Debug, PartialEq)]

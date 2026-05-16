@@ -5,22 +5,45 @@ use comfy_table::{
 use intern_core::rules::{Severity, Violation};
 use serde::Serialize;
 
+#[derive(Clone, Copy)]
 pub enum GroupBy {
     Slide,
     Rule,
 }
 
+#[derive(Clone, Copy)]
 pub enum OutputFormat {
     Table,
     Text,
     Json,
 }
 
-pub fn print_violations(violations: &[Violation], group_by: GroupBy, format: OutputFormat) {
-    match format {
-        OutputFormat::Table => print_table(violations, group_by),
-        OutputFormat::Text => print_text(violations, group_by),
-        OutputFormat::Json => print_json(violations),
+/// Prints the per-file check results. Table and text output print a header per
+/// file when more than one file was checked; JSON always nests results under
+/// `files`.
+pub fn print_results(
+    results: &[(String, Vec<Violation>)],
+    group_by: GroupBy,
+    format: OutputFormat,
+) {
+    if let OutputFormat::Json = format {
+        print_json(results);
+        return;
+    }
+    let multi = results.len() > 1;
+    for (path, violations) in results {
+        if multi {
+            println!("\n{path}");
+        }
+        match format {
+            OutputFormat::Table => print_table(violations, group_by),
+            OutputFormat::Text => print_text(violations, group_by),
+            OutputFormat::Json => {}
+        }
+    }
+    if multi {
+        let total: usize = results.iter().map(|(_, v)| v.len()).sum();
+        println!("\n{total} violation(s) across {} file(s)", results.len());
     }
 }
 
@@ -46,8 +69,8 @@ fn print_table(violations: &[Violation], group_by: GroupBy) {
         GroupBy::Rule => table.set_header(vec!["Rule", "Slide", "Element", "Message"]),
     };
 
-    // Cap element and message columns so the table stays readable in a standard terminal.
-    // SAFETY: header always has 4 columns, so indices 2 and 3 always exist.
+    // Cap the element and message columns so the table stays readable.
+    // SAFETY: the header always has 4 columns, so indices 2 and 3 exist.
     table
         .column_mut(2)
         .unwrap()
@@ -141,22 +164,28 @@ struct JsonViolation<'a> {
     severity: &'a str,
 }
 
-fn print_json(violations: &[Violation]) {
-    let items: Vec<JsonViolation> = violations
+fn json_violation(v: &Violation) -> JsonViolation<'_> {
+    JsonViolation {
+        rule_id: v.rule_id,
+        slide: v.slide,
+        element: v.element.as_deref(),
+        message: v.message.to_string(),
+        severity: match v.severity {
+            Severity::Warning => "warning",
+            Severity::Error => "error",
+        },
+    }
+}
+
+fn print_json(results: &[(String, Vec<Violation>)]) {
+    let files: Vec<_> = results
         .iter()
-        .map(|v| JsonViolation {
-            rule_id: v.rule_id,
-            slide: v.slide,
-            element: v.element.as_deref(),
-            message: v.message.to_string(),
-            severity: match v.severity {
-                Severity::Warning => "warning",
-                Severity::Error => "error",
-            },
+        .map(|(path, violations)| {
+            let items: Vec<JsonViolation> = violations.iter().map(json_violation).collect();
+            serde_json::json!({ "path": path, "violations": items })
         })
         .collect();
-
-    let output = serde_json::json!({ "violations": items });
-    // SAFETY: JsonViolation contains only str/usize/Option primitives - serialization to a String is infallible.
+    let output = serde_json::json!({ "files": files });
+    // SAFETY: the value holds only strings, numbers, and arrays - serialization is infallible.
     println!("{}", serde_json::to_string_pretty(&output).unwrap());
 }

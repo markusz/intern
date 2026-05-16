@@ -80,5 +80,5 @@ threshold_px = 5
 ```
 
 The word- and count-based limits (`TITLE_LENGTH`, `BULLET_LENGTH`, `FONT_VARIETY`,
-`COLOR_VARIETY`, `SLIDE_COUNT`) are tuned under `[limits]` - see
-[Configuration](./configuration.md).
+`COLOR_VARIETY`, `SLIDE_COUNT`) are tuned in each rule's `[rules.<RULE_ID>]` table -
+see [Configuration](./configuration.md).

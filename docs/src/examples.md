@@ -1,159 +1,143 @@
 # Examples
 
-Practical recipes for common situations. Each one is self-contained - copy it,
-swap in your own file name, and run it. If you have never used a terminal before,
-start with the first recipe; it walks through every step.
+Recipes for common situations - find your task in the quick reference, jump to the
+recipe, copy the command. New to the command line? Start with [First run](#first-run).
 
-The recipes are grouped into **everyday use** (checking and tidying a single deck)
-and **teams & automation** (shared standards, CI, scripting).
+## Quick reference
 
----
+| I want to... | Command |
+|---|---|
+| Check one deck | `intern deck.pptx` |
+| Check every deck in a folder | `intern check slides/` |
+| Auto-fix what can be fixed | `intern fix deck.pptx` |
+| Preview fixes without saving | `intern fix deck.pptx --dry-run` |
+| Check a single slide | `intern check deck.pptx --slide 4` |
+| Turn a check off | `intern check deck.pptx --disable ALL_CAPS` |
+| Run only certain checks | `intern check deck.pptx --rules TITLE_Y` |
+| Be stricter or looser on alignment | `intern check deck.pptx --threshold 1` |
+| Get machine-readable output | `intern check deck.pptx --output json` |
 
-## Everyday use
+## First run
 
-### Check a deck before you send it
+Never used a command-line tool? Three steps.
 
-This is the one command most people need.
-
-1. Open a terminal:
-   - **macOS** - press `Cmd+Space`, type `Terminal`, press `Enter`.
-   - **Windows** - open `PowerShell` from the Start menu.
-2. Move to the folder that holds your presentation. If the file is on your
-   Desktop:
+1. **Open a terminal.** macOS: press `Cmd+Space`, type `Terminal`, `Enter`.
+   Windows: open `PowerShell` from the Start menu.
+2. **Go to your deck's folder.** If it is on your Desktop:
    ```sh
    cd Desktop
    ```
-3. Run the check:
+3. **Check it:**
    ```sh
-   intern check quarterly.pptx
+   intern quarterly.pptx
    ```
 
-`intern` prints one row per problem it finds:
+`intern` prints one row per problem:
 
 ```text
   Slide  Rule                  Element   Message
   ─────────────────────────────────────────────────────────────────────
   2      TITLE_Y               Title 2   title is 34.2px lower than on most slides
-  3      BODY_FONT_SIZE        Body      body font size 18pt, expected 24pt
   4      TITLE_TRAILING_PUNCT  -         title ends with '.' - remove it
 
-3 violation(s)
+2 violation(s)
 ```
 
-- **Slide** - which slide the problem is on (slide 1 is the first slide).
-- **Rule** - the short id of the check that fired; look it up in the
-  [Rules reference](./rules.md).
-- **Element** - the shape involved, or `-` when the problem is the whole slide.
-- **Message** - a plain-language description.
+- **Slide** - where the problem is (slide 1 is the first slide).
+- **Rule** - the check that fired; look it up in the [Rules reference](./rules.md).
+- **Element** - the shape involved, or `-` for a whole-slide problem.
+- **Message** - what is wrong, in plain words.
 
-If the deck is clean you'll see `No violations found.` instead.
+A clean deck prints `No violations found.`
 
-### Fix the easy problems automatically
+## Everyday tasks
 
-Many problems - misaligned boxes, inconsistent font sizes, stray double spaces -
-can be corrected for you:
+### Check a deck
 
 ```sh
-intern fix quarterly.pptx
+intern deck.pptx
 ```
 
-```text
-Applied 5 fix(es) to quarterly.pptx  (original backed up to quarterly.pptx.bak)
-```
-
-Your original file is always saved next to it as `quarterly.pptx.bak`, so you can
-go back if you don't like a change. Wording problems (a too-long title, ALL CAPS
-text) are reported but not rewritten - those need a human. See which rules are
-auto-fixable in the [Rules reference](./rules.md).
-
-### Preview the fixes first
-
-To see exactly what `intern fix` would change without touching the file:
+`check` is the default action, so the subcommand is optional. Pass a folder to
+check every `.pptx` inside it:
 
 ```sh
-intern fix quarterly.pptx --dry-run
+intern check slides/
 ```
 
-```text
-5 fix(es) would be applied:
-  slide 2 'Title 2': set Y → 274.6px
-  slide 3 'Body': set font size → 24pt
-  ...
-```
-
-### Work on a single slide
-
-When you only care about one slide, pass its number (counting from 1):
+### Fix the easy problems
 
 ```sh
-intern check quarterly.pptx --slide 4
+intern fix deck.pptx
 ```
 
-Note that deck-wide checks - such as "all titles line up" - need every slide to
-compare against, so run without `--slide` for the full picture.
+Applies every fixable violation and saves a backup as `deck.pptx.bak`. Alignment,
+font-size, and whitespace issues are corrected; wording problems are reported for
+you to handle. The [Rules reference](./rules.md) marks which is which.
 
-### Adjust how strict the alignment check is
-
-Alignment is compared with a tolerance, in pixels (default: `2`). A box off by
-less than the tolerance is treated as fine.
+### Preview before fixing
 
 ```sh
-intern check quarterly.pptx --threshold 5   # more forgiving
-intern check quarterly.pptx --threshold 1   # pixel-perfect
+intern fix deck.pptx --dry-run
 ```
 
-### Switch rules off, or run only some
+Lists what `fix` would change without touching the file.
 
-Turn off checks you don't care about:
+### Focus on one slide
 
 ```sh
-intern check quarterly.pptx --disable ALL_CAPS,SLIDE_COUNT
+intern check deck.pptx --slide 4
 ```
 
-Or run *only* the checks you want:
+Slides count from 1. Deck-wide checks (like "all titles line up") need every
+slide, so drop `--slide` for the full picture.
+
+### Loosen or tighten alignment
 
 ```sh
-intern check quarterly.pptx --rules TITLE_Y,TITLE_X_WIDTH
+intern check deck.pptx --threshold 5   # more forgiving
+intern check deck.pptx --threshold 1   # pixel-perfect
 ```
 
-Rule ids are comma-separated and come from the [Rules reference](./rules.md). A
-misspelled id is rejected with an error, so a typo never silently does nothing.
+Alignment tolerance in pixels (default `2`). Anything off by less is treated as
+fine.
 
----
+### Turn rules on or off
 
-## Teams & automation
+```sh
+intern check deck.pptx --disable ALL_CAPS,SLIDE_COUNT   # skip these
+intern check deck.pptx --rules TITLE_Y,TITLE_X_WIDTH    # run only these
+```
 
-### Share one standard across a team
+Rule ids come from the [Rules reference](./rules.md); a typo is rejected with an
+error. To make settings permanent, use a config file (below).
 
-Put an `.intern.toml` file in your project folder and commit it to version
-control. Everyone who runs `intern` in that folder picks up the same settings.
+## Teams & CI
+
+### A shared team standard
+
+Commit an `.intern.toml` to your project - everyone who runs `intern` there picks
+it up:
 
 ```toml
-# .intern.toml - house style for our decks
 threshold_px = 3
-
-[rules]
 disable = ["IMAGE_ASPECT_RATIO"]
 
-[limits]
-TITLE_LENGTH = 8
-SLIDE_COUNT  = 30
+[rules.TITLE_LENGTH]
+max_words = 8
 ```
 
-See the [Configuration](./configuration.md) chapter for every available setting.
+Full reference: [Configuration](./configuration.md).
 
-### Set your personal defaults
+### Your personal defaults
 
-For settings you want on *every* deck you personally lint - regardless of project -
-put the same kind of file at `~/.config/intern.toml`. A project's `.intern.toml`
-takes precedence over it when both exist.
+Settings you want on every deck you lint, regardless of project, go in
+`~/.config/intern.toml`. A project's `.intern.toml` wins over it when both exist.
 
-### Block messy decks in CI
+### Gate a CI build
 
-`intern check` exits with code `0` when a deck is clean and `1` when it finds
-violations - exactly what a CI system needs to pass or fail a build.
-
-GitHub Actions example - save as `.github/workflows/decks.yml`:
+`intern check` exits `0` when clean and `1` on violations - point it at a folder
+to gate every deck. GitHub Actions, saved as `.github/workflows/decks.yml`:
 
 ```yaml
 name: decks
@@ -168,63 +152,40 @@ jobs:
         run: |
           curl -L https://github.com/markusz/intern/releases/latest/download/intern-x86_64-unknown-linux-gnu.tar.gz | tar xz
           sudo mv intern /usr/local/bin/
-      - name: Lint the deck
-        run: intern check slides/quarterly.pptx
+      - run: intern check slides/
 ```
 
-To fail the build when a deck *could* be auto-tidied (rather than when it is
-outright broken), use `fix --check` - it applies nothing and exits `1` if any fix
-is available:
+### Feed results to other tools
 
 ```sh
-intern fix slides/quarterly.pptx --check
+intern check deck.pptx --output json
 ```
 
-### Use the results in another tool
-
-`--output json` emits machine-readable results:
-
-```sh
-intern check quarterly.pptx --output json
-```
+JSON output nests violations under each file:
 
 ```json
 {
-  "violations": [
+  "files": [
     {
-      "rule_id": "TITLE_Y",
-      "slide": 2,
-      "element": "Title 2",
-      "message": "title is 34.2px lower than on most slides",
-      "severity": "warning"
+      "path": "deck.pptx",
+      "violations": [
+        {
+          "rule_id": "TITLE_Y",
+          "slide": 2,
+          "element": "Title 2",
+          "message": "title is 34.2px lower than on most slides",
+          "severity": "warning"
+        }
+      ]
     }
   ]
 }
 ```
 
-Combine it with [`jq`](https://jqlang.github.io/jq/) to, for example, list only
-the slides with a title-alignment problem:
+Pipe it through [`jq`](https://jqlang.github.io/jq/) - for example, list every
+slide with a title-alignment problem:
 
 ```sh
-intern check quarterly.pptx --output json \
-  | jq -r '.violations[] | select(.rule_id == "TITLE_Y") | .slide'
-```
-
-### Check every deck in a folder
-
-`intern` checks one file at a time; a shell loop covers a whole directory:
-
-```sh
-for deck in decks/*.pptx; do
-  echo "=== $deck ==="
-  intern check "$deck"
-done
-```
-
-To stop at the first deck with problems (useful in a script):
-
-```sh
-for deck in decks/*.pptx; do
-  intern check "$deck" || { echo "Problems in $deck"; exit 1; }
-done
+intern check deck.pptx --output json \
+  | jq -r '.files[].violations[] | select(.rule_id == "TITLE_Y") | .slide'
 ```

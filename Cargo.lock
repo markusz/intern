@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "intern"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "comfy-table",
@@ -628,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "intern-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ppt-rs",
  "quick-xml",

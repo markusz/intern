@@ -20,30 +20,55 @@ auto-discovered files are used only when present.
 ## Example
 
 ```toml
-threshold_px = 3
+threshold_px = 2
 
-[rules]
-disable = ["SLIDE_COUNT", "IMAGE_ASPECT_RATIO"]
-# enable = ["TITLE_Y", "TITLE_X_WIDTH"]   # if set, ONLY these rules run
+disable = ["IMAGE_ASPECT_RATIO"]        # turn rules off in bulk
+# only  = ["TITLE_Y", "TITLE_X_WIDTH"]  # if set, ONLY these rules run
 
 [output]
 format = "table"      # table | text | json
 group_by = "rule"     # slide | rule
 
-[limits]
-TITLE_LENGTH  = 10    # max words in a slide title
-BULLET_LENGTH = 20    # max words in a single bullet
-FONT_VARIETY  = 2     # max distinct font families
-COLOR_VARIETY = 3     # max distinct text colors
-SLIDE_COUNT   = 20    # max slides in the deck
+[rules.TITLE_LENGTH]
+max_words = 8
+
+[rules.SLIDE_COUNT]
+enabled = false       # turn a single rule off
+
+[rules.BULLET_LENGTH]
+max_words = 25
 ```
 
-## Sections
+## Per-rule tables
+
+Each rule can be configured in its own `[rules.<RULE_ID>]` table. A rule with no
+table runs enabled with default settings.
+
+- `enabled = false` turns the rule off.
+- The remaining keys are that rule's own settings. The count-based rules take a
+  limit:
+
+  | Rule | Key |
+  |---|---|
+  | `TITLE_LENGTH` | `max_words` |
+  | `BULLET_LENGTH` | `max_words` |
+  | `FONT_VARIETY` | `max_families` |
+  | `COLOR_VARIETY` | `max_colors` |
+  | `SLIDE_COUNT` | `max_slides` |
+
+## Blunt controls
+
+- **`disable`** - a top-level list that turns rules off in bulk.
+- **`only`** - a top-level whitelist; when present, *only* the listed rules run.
+- **Disabling always wins.** If a rule is both whitelisted by `only` and disabled
+  (via `disable` or `enabled = false`), it does not run and `intern` prints a
+  warning.
+
+## Other settings
 
 - **`threshold_px`** - alignment tolerance in pixels for every geometric rule.
-- **`[rules]`** - `disable` skips rules; `enable`, when present, acts as a
-  whitelist so that *only* the listed rules run.
-- **`[output]`** - default output `format` and `group_by` for `intern check`.
-- **`[limits]`** - numeric thresholds for the count-based rules, keyed by rule
-  id: `TITLE_LENGTH`, `BULLET_LENGTH`, `FONT_VARIETY`, `COLOR_VARIETY`,
-  `SLIDE_COUNT`.
+- **`[output]`** - default `format` (`table` | `text` | `json`) and `group_by`
+  (`slide` | `rule`) for `intern check`.
+
+CLI flags override the file: `--disable` extends `disable`, and `--rules` replaces
+`only`.

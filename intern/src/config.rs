@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,28 +8,25 @@ use miette::{Context, IntoDiagnostic};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     pub threshold_px: Option<u32>,
-    pub rules: Option<RulesConfig>,
-    pub output: Option<OutputConfig>,
-    pub limits: Option<LimitsConfig>,
-}
-
-/// The `[limits]` section, keyed by rule id (e.g. `TITLE_LENGTH = 10`).
-#[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub struct LimitsConfig {
-    pub title_length: Option<usize>,
-    pub bullet_length: Option<usize>,
-    pub font_variety: Option<usize>,
-    pub color_variety: Option<usize>,
-    pub slide_count: Option<usize>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-pub struct RulesConfig {
     pub disable: Option<Vec<String>>,
-    pub enable: Option<Vec<String>>,
+    pub only: Option<Vec<String>>,
+    pub output: Option<OutputConfig>,
+    pub rules: Option<HashMap<String, RuleTable>>,
+}
+
+/// A `[rules.<RULE_ID>]` table: the rule's on/off switch plus its own settings.
+/// A rule with no table runs enabled with default settings.
+#[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct RuleTable {
+    pub enabled: Option<bool>,
+    pub max_words: Option<usize>,
+    pub max_families: Option<usize>,
+    pub max_colors: Option<usize>,
+    pub max_slides: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -48,27 +46,30 @@ impl Config {
             .wrap_err_with(|| format!("cannot parse config '{display}'"))
     }
 
-    /// Converts the optional `[limits]` section into a `Limits` value, falling back to defaults.
+    /// Reads the count-based limits out of the `[rules.*]` tables, falling back to
+    /// built-in defaults for any rule without a configured value.
     pub fn limits(&self) -> Limits {
-        let cfg = self.limits.as_ref();
-        let defaults = Limits::default();
+        let d = Limits::default();
         Limits {
-            title_words: cfg
-                .and_then(|l| l.title_length)
-                .unwrap_or(defaults.title_words),
-            bullet_words: cfg
-                .and_then(|l| l.bullet_length)
-                .unwrap_or(defaults.bullet_words),
-            font_families: cfg
-                .and_then(|l| l.font_variety)
-                .unwrap_or(defaults.font_families),
-            text_colors: cfg
-                .and_then(|l| l.color_variety)
-                .unwrap_or(defaults.text_colors),
-            slide_count: cfg
-                .and_then(|l| l.slide_count)
-                .unwrap_or(defaults.slide_count),
+            title_words: self.rule_limit("TITLE_LENGTH", |t| t.max_words, d.title_words),
+            bullet_words: self.rule_limit("BULLET_LENGTH", |t| t.max_words, d.bullet_words),
+            font_families: self.rule_limit("FONT_VARIETY", |t| t.max_families, d.font_families),
+            text_colors: self.rule_limit("COLOR_VARIETY", |t| t.max_colors, d.text_colors),
+            slide_count: self.rule_limit("SLIDE_COUNT", |t| t.max_slides, d.slide_count),
         }
+    }
+
+    fn rule_limit(
+        &self,
+        id: &str,
+        pick: impl Fn(&RuleTable) -> Option<usize>,
+        default: usize,
+    ) -> usize {
+        self.rules
+            .as_ref()
+            .and_then(|tables| tables.get(id))
+            .and_then(pick)
+            .unwrap_or(default)
     }
 
     /// Loads the highest-precedence config file that exists, or built-in defaults
@@ -123,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn limits_returns_defaults_when_no_section() {
+    fn limits_returns_defaults_when_no_rules() {
         let cfg = Config::default();
         let l = cfg.limits();
         let d = defaults();
@@ -135,27 +136,36 @@ mod tests {
     }
 
     #[test]
-    fn limits_overrides_configured_fields() {
+    fn limits_read_from_rule_tables() {
+        let mut rules = HashMap::new();
+        rules.insert(
+            "TITLE_LENGTH".to_string(),
+            RuleTable {
+                max_words: Some(5),
+                ..RuleTable::default()
+            },
+        );
+        rules.insert(
+            "SLIDE_COUNT".to_string(),
+            RuleTable {
+                max_slides: Some(10),
+                ..RuleTable::default()
+            },
+        );
         let cfg = Config {
-            limits: Some(LimitsConfig {
-                title_length: Some(5),
-                slide_count: Some(10),
-                ..LimitsConfig::default()
-            }),
+            rules: Some(rules),
             ..Config::default()
         };
         let l = cfg.limits();
         assert_eq!(l.title_words, 5);
         assert_eq!(l.slide_count, 10);
-        // unset fields fall back to defaults
+        // a rule with no table keeps the default
         assert_eq!(l.bullet_words, defaults().bullet_words);
-        assert_eq!(l.font_families, defaults().font_families);
-        assert_eq!(l.text_colors, defaults().text_colors);
     }
 
     #[test]
     fn limits_parsed_from_toml() {
-        let toml = "[limits]\nTITLE_LENGTH = 6\nBULLET_LENGTH = 15\n";
+        let toml = "[rules.TITLE_LENGTH]\nmax_words = 6\n\n[rules.BULLET_LENGTH]\nmax_words = 15\n";
         let cfg: Config = toml::from_str(toml).unwrap();
         let l = cfg.limits();
         assert_eq!(l.title_words, 6);
@@ -164,61 +174,9 @@ mod tests {
     }
 
     #[test]
-    fn limits_drive_title_length_rule() {
-        use intern_core::model::{ElementKind, Rect, SlideData, SlideElement};
-        use intern_core::rules::all_rules;
-
-        let make_slide = || SlideData {
-            index: 0,
-            elements: vec![SlideElement {
-                name: "Title 1".into(),
-                kind: ElementKind::Title,
-                rect: Rect {
-                    x: 457_200,
-                    y: 274_638,
-                    w: 8_229_600,
-                    h: 1_143_000,
-                },
-                font_size: None,
-                font_family: None,
-                text_color: None,
-                // 6 words - should fire when limit=5, be silent when limit=7
-                paragraphs: vec!["one two three four five six".into()],
-            }],
-        };
-
-        let threshold = 19_050;
-
-        let tight = Config {
-            limits: Some(LimitsConfig {
-                title_length: Some(5),
-                ..LimitsConfig::default()
-            }),
-            ..Config::default()
-        };
-        let fires: Vec<_> = all_rules(&tight.limits())
-            .iter()
-            .filter(|r| r.id() == "TITLE_LENGTH")
-            .flat_map(|r| r.check(&[make_slide()], threshold))
-            .collect();
-        assert_eq!(fires.len(), 1, "limit=5 should fire on a 6-word title");
-
-        let loose = Config {
-            limits: Some(LimitsConfig {
-                title_length: Some(7),
-                ..LimitsConfig::default()
-            }),
-            ..Config::default()
-        };
-        let silent: Vec<_> = all_rules(&loose.limits())
-            .iter()
-            .filter(|r| r.id() == "TITLE_LENGTH")
-            .flat_map(|r| r.check(&[make_slide()], threshold))
-            .collect();
-        assert!(
-            silent.is_empty(),
-            "limit=7 should not fire on a 6-word title"
-        );
+    fn outdated_top_level_section_is_rejected() {
+        // deny_unknown_fields: a pre-0.3 [limits] section fails loudly.
+        assert!(toml::from_str::<Config>("[limits]\nTITLE_LENGTH = 6\n").is_err());
     }
 
     #[test]

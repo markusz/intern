@@ -71,7 +71,8 @@ cargo install --path intern
 ## Usage
 
 ```sh
-intern check deck.pptx    # check and print violations
+intern deck.pptx          # check (the default action)
+intern check slides/      # check every .pptx in a folder
 intern fix deck.pptx      # auto-fix violations in place
 ```
 
@@ -109,22 +110,24 @@ Files are not merged - the highest-precedence file wins as a whole, and CLI flag
 override individual settings on top of it.
 
 ```toml
-threshold_px = 3
+threshold_px = 2
 
-[rules]
-disable = ["SLIDE_COUNT", "IMAGE_ASPECT_RATIO"]
+disable = ["IMAGE_ASPECT_RATIO"]        # turn rules off in bulk
+# only  = ["TITLE_Y", "TITLE_X_WIDTH"]  # if set, ONLY these rules run
 
 [output]
 format = "table"
 group_by = "rule"
 
-[limits]
-TITLE_LENGTH  = 10   # max words in a slide title
-BULLET_LENGTH = 20   # max words in a single bullet
-FONT_VARIETY  = 2    # max distinct font families
-COLOR_VARIETY = 3    # max distinct text colors
-SLIDE_COUNT   = 20   # max slides in the deck
+[rules.TITLE_LENGTH]
+max_words = 8
+
+[rules.SLIDE_COUNT]
+enabled = false
 ```
+
+Each rule is configured in its own `[rules.<RULE_ID>]` table; `disable` and `only`
+are blunt top-level lists. See the [documentation](https://markusz.github.io/intern/configuration.html) for the full reference.
 
 ---
 
