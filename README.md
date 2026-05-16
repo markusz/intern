@@ -87,7 +87,7 @@ That's it. No configuration required to get started.
 | `--slide <n>` | all | Analyze only slide `n` |
 | `--output table\|text\|json` | `table` | Output format |
 | `--group-by slide\|rule` | `slide` | Group violations |
-| `--config <path>` | `.intern.toml` | Config file path |
+| `--config <path>` | auto | Load settings from a specific config file |
 
 ### Use in CI
 
@@ -99,7 +99,14 @@ Exit code is `0` if clean, `1` if violations found - standard for shell scriptin
 
 ### Config file
 
-Drop an `.intern.toml` in your working directory to make settings permanent.
+Settings can live in a TOML file. `intern` loads the first one it finds:
+
+1. the path passed to `--config <file>`
+2. `./.intern.toml` in the current directory (project config)
+3. `~/.config/intern.toml` (user config, honours `$XDG_CONFIG_HOME`)
+
+Files are not merged - the highest-precedence file wins as a whole, and CLI flags
+override individual settings on top of it.
 
 ```toml
 threshold_px = 3

@@ -23,7 +23,7 @@ violations are found.
 | `--slide <n>` | all | Analyze only slide `n` (1-based) |
 | `--output table\|text\|json` | `table` | Output format |
 | `--group-by slide\|rule` | `slide` | Group violations |
-| `--config <path>` | `.intern.toml` | Config file path |
+| `--config <path>` | auto | Load settings from a specific file ([Configuration](./configuration.md)) |
 
 An unknown rule id passed to `--rules` or `--disable` is rejected with an error
 rather than silently ignored.

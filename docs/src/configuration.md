@@ -1,7 +1,23 @@
 # Configuration
 
-Drop an `.intern.toml` in your working directory to make settings permanent. Every
-field is optional, and CLI flags always override the config file.
+Settings can live in a TOML file so you don't have to repeat flags on every run.
+Every field is optional, and CLI flags always override whatever the file provides.
+
+## Where intern looks
+
+`intern` loads the **first** file it finds, in this order:
+
+1. the path passed to `--config <file>`
+2. `./.intern.toml` in the current directory (project config)
+3. `$XDG_CONFIG_HOME/intern.toml`, or `~/.config/intern.toml` (user config)
+
+If none exists, the built-in defaults apply. Files are **not merged** - the
+highest-precedence file wins as a whole, and CLI flags then layer on top of it.
+
+A path passed to `--config` must exist, or `intern` exits with an error; the
+auto-discovered files are used only when present.
+
+## Example
 
 ```toml
 threshold_px = 3
@@ -29,5 +45,3 @@ slide_count   = 20    # SLIDE_COUNT   - max slides in the deck
   whitelist so that *only* the listed rules run.
 - **`[output]`** - default output `format` and `group_by` for `intern check`.
 - **`[limits]`** - numeric thresholds for the "must be ≤ N" rules.
-
-Use a different file with `--config <path>`.

@@ -1,5 +1,6 @@
+use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use intern_core::rules::Limits;
 use miette::{Context, IntoDiagnostic};
@@ -68,22 +69,46 @@ impl Config {
         }
     }
 
-    /// Returns `Ok(default)` when no config file is present (auto-discovery only).
-    /// Returns `Err` if an explicit path was given or if the auto-discovered file exists but
-    /// cannot be parsed.
+    /// Loads the highest-precedence config file that exists, or built-in defaults
+    /// when none is found. An explicit `--config` path that cannot be read is an
+    /// error; the auto-discovered files are used only when present.
     pub fn auto_load(explicit: Option<&Path>) -> miette::Result<Self> {
-        match explicit {
-            Some(path) => Self::load(path),
-            None => {
-                let default_path = Path::new(".intern.toml");
-                if default_path.exists() {
-                    Self::load(default_path)
-                } else {
-                    Ok(Self::default())
-                }
-            }
+        match resolve_path(explicit) {
+            Some(path) => Self::load(&path),
+            None => Ok(Self::default()),
         }
     }
+}
+
+const PROJECT_CONFIG: &str = ".intern.toml";
+
+/// Picks the config file to load, highest precedence first: an explicit `--config`
+/// path, then a project-local `.intern.toml`, then the user config file. Returns
+/// `None` when no file is present so the caller falls back to built-in defaults.
+/// Files are never merged - the first one found wins as a whole.
+fn resolve_path(explicit: Option<&Path>) -> Option<PathBuf> {
+    if let Some(path) = explicit {
+        return Some(path.to_path_buf());
+    }
+    let project = PathBuf::from(PROJECT_CONFIG);
+    if project.is_file() {
+        return Some(project);
+    }
+    user_config_file(
+        env::var("XDG_CONFIG_HOME").ok().as_deref(),
+        env::var("HOME").ok().as_deref(),
+    )
+    .filter(|path| path.is_file())
+}
+
+/// Resolves the user-level config path: `$XDG_CONFIG_HOME/intern.toml`, or
+/// `$HOME/.config/intern.toml` when `XDG_CONFIG_HOME` is unset or empty.
+fn user_config_file(xdg_config_home: Option<&str>, home: Option<&str>) -> Option<PathBuf> {
+    if let Some(xdg) = xdg_config_home.filter(|dir| !dir.is_empty()) {
+        return Some(Path::new(xdg).join("intern.toml"));
+    }
+    home.filter(|dir| !dir.is_empty())
+        .map(|dir| Path::new(dir).join(".config").join("intern.toml"))
 }
 
 #[cfg(test)]
@@ -192,5 +217,34 @@ mod tests {
             silent.is_empty(),
             "limit=7 should not fire on a 6-word title"
         );
+    }
+
+    #[test]
+    fn explicit_config_path_always_wins() {
+        let picked = resolve_path(Some(Path::new("/tmp/custom.toml")));
+        assert_eq!(picked, Some(PathBuf::from("/tmp/custom.toml")));
+    }
+
+    #[test]
+    fn user_config_prefers_xdg_config_home() {
+        let path = user_config_file(Some("/cfg"), Some("/home/me")).unwrap();
+        assert_eq!(path, PathBuf::from("/cfg/intern.toml"));
+    }
+
+    #[test]
+    fn user_config_falls_back_to_home_when_xdg_unset() {
+        let path = user_config_file(None, Some("/home/me")).unwrap();
+        assert_eq!(path, PathBuf::from("/home/me/.config/intern.toml"));
+    }
+
+    #[test]
+    fn user_config_ignores_empty_xdg() {
+        let path = user_config_file(Some(""), Some("/home/me")).unwrap();
+        assert_eq!(path, PathBuf::from("/home/me/.config/intern.toml"));
+    }
+
+    #[test]
+    fn user_config_is_none_without_home() {
+        assert!(user_config_file(None, None).is_none());
     }
 }
