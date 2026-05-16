@@ -3,3 +3,4 @@ PLAN.md
 **/*.pptx
 !fixtures/*.pptx
 .DS_Store
+/docs/book

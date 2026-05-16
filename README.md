@@ -8,6 +8,8 @@
 
 Existing tools are proprietary Office add-ins or AI-powered web uploads. **intern** is the first open-source, rule-based CLI linter for PowerPoint - configurable, scriptable, and CI-friendly.
 
+**[Read the documentation →](https://markusz.github.io/intern/)**
+
 ---
 
 ```
