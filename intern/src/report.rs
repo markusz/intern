@@ -61,8 +61,8 @@ fn print_table(violations: &[Violation], group_by: GroupBy) {
         let slide = v
             .slide
             .map(|n| n.to_string())
-            .unwrap_or_else(|| "—".to_string());
-        let element = v.element.clone().unwrap_or_else(|| "—".to_string());
+            .unwrap_or_else(|| "-".to_string());
+        let element = v.element.clone().unwrap_or_else(|| "-".to_string());
         let message = v.message.to_string();
         match group_by {
             GroupBy::Slide => table.add_row(vec![&slide, v.rule_id, &element, &message]),
@@ -99,7 +99,7 @@ fn print_text_by_slide(violations: &[Violation]) {
             }
         }
         if let Some(ref el) = v.element {
-            println!("  [{}] {} — {}", v.rule_id, el, v.message);
+            println!("  [{}] {} - {}", v.rule_id, el, v.message);
         } else {
             println!("  [{}] {}", v.rule_id, v.message);
         }
@@ -123,9 +123,9 @@ fn print_text_by_rule(violations: &[Violation]) {
             .map(|n| format!("slide {n}"))
             .unwrap_or_else(|| "presentation".to_string());
         if let Some(ref el) = v.element {
-            println!("  {loc} — {el} — {}", v.message);
+            println!("  {loc} - {el} - {}", v.message);
         } else {
-            println!("  {loc} — {}", v.message);
+            println!("  {loc} - {}", v.message);
         }
     }
 
@@ -157,6 +157,6 @@ fn print_json(violations: &[Violation]) {
         .collect();
 
     let output = serde_json::json!({ "violations": items });
-    // SAFETY: JsonViolation contains only str/usize/Option primitives — serialization to a String is infallible.
+    // SAFETY: JsonViolation contains only str/usize/Option primitives - serialization to a String is infallible.
     println!("{}", serde_json::to_string_pretty(&output).unwrap());
 }

@@ -218,7 +218,7 @@ mod tests {
             0,
             vec![
                 shape("L1", 457_200, 1_000_000),
-                shape("L2", 457_200 + 1, 2_000_000), // 1 EMU — well within 2 px
+                shape("L2", 457_200 + 1, 2_000_000), // 1 EMU - well within 2 px
                 shape("R1", 5_500_000, 1_000_000),
                 shape("R2", 5_500_000, 2_000_000),
             ],

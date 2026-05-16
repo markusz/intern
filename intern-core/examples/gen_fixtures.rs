@@ -13,7 +13,7 @@ fn rect(name: &str, x: u32, y: u32, w: u32, h: u32) -> Shape {
 }
 
 fn save(filename: &str, title: &str, slides: Vec<SlideContent>) {
-    // SAFETY: all three operations are unrecoverable in a fixture-generation binary —
+    // SAFETY: all three operations are unrecoverable in a fixture-generation binary -
     // if we can't create the PPTX or write the file, there's nothing to fall back to.
     let bytes = create_pptx_with_content(title, slides).expect("generate pptx");
     // SAFETY: CARGO_MANIFEST_DIR is always a subdirectory, never the filesystem root.
@@ -36,7 +36,7 @@ fn main() {
     println!("Done.");
 }
 
-/// 3-slide deck with no violations — happy-path baseline.
+/// 3-slide deck with no violations - happy-path baseline.
 fn clean_deck() {
     let col_w: u32 = 3_800_000;
     let col_h: u32 = 4_000_000;
@@ -69,13 +69,13 @@ fn two_column_misaligned() {
 
     let row_y = |n: u32| MARGIN + gap * n;
     let shapes: Vec<Shape> = vec![
-        // Left column — intentionally misaligned X on some rows
+        // Left column - intentionally misaligned X on some rows
         rect("L1", left_x, row_y(0), col_w, col_h),
         rect("L2", left_x + 95_250, row_y(1), col_w, col_h), // ~10px right
         rect("L3", left_x, row_y(2), col_w, col_h),
         rect("L4", left_x + 285_750, row_y(3), col_w, col_h), // ~30px right
         rect("L5", left_x, row_y(4), col_w, col_h),
-        // Right column — perfectly aligned
+        // Right column - perfectly aligned
         rect("R1", right_x, row_y(0), col_w, col_h),
         rect("R2", right_x, row_y(1), col_w, col_h),
         rect("R3", right_x, row_y(2), col_w, col_h),

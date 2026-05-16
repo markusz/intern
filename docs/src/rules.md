@@ -59,7 +59,7 @@ Geometric checks. All compare positions within a configurable pixel
 
 ## Auto-fixable rules
 
-`intern fix` repairs the rules with an unambiguous correction — the alignment rules
+`intern fix` repairs the rules with an unambiguous correction - the alignment rules
 (snap to the peer median), the font-size rules, and `DOUBLE_SPACE` / `TRAILING_SPACE`
 (normalise whitespace). The remaining text-quality and structural rules report the
 problem but leave the wording to you.
@@ -80,5 +80,5 @@ threshold_px = 5
 ```
 
 The word- and count-based limits (`TITLE_LENGTH`, `BULLET_LENGTH`, `FONT_VARIETY`,
-`COLOR_VARIETY`, `SLIDE_COUNT`) are tuned under `[limits]` — see
+`COLOR_VARIETY`, `SLIDE_COUNT`) are tuned under `[limits]` - see
 [Configuration](./configuration.md).

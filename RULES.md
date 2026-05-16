@@ -8,7 +8,7 @@ Each rule gets a unique ID you can pass to `--rules` or `--disable`. All geometr
 
 These rules run across all slides and compare title placeholder geometry.
 
-### `TITLE_Y` — title top-edge drift
+### `TITLE_Y` - title top-edge drift
 
 The top edge of the title should be the same on every slide.
 
@@ -23,7 +23,7 @@ Slide 1          Slide 2          Slide 3
   Y = 457 200      Y = 457 200      Y = 571 500   ← fires
 ```
 
-### `TITLE_X_WIDTH` — title left-edge or width drift
+### `TITLE_X_WIDTH` - title left-edge or width drift
 
 The left edge and width of the title should be consistent across slides.
 
@@ -37,7 +37,7 @@ Slide 1          Slide 2
   X = 457 200      X = 685 800     ← fires
 ```
 
-### `TITLE_FONT_SIZE` — font size outlier
+### `TITLE_FONT_SIZE` - font size outlier
 
 One slide's title uses a font size that differs from the majority of slides.
 
@@ -59,7 +59,7 @@ Detected when shapes are clearly split into a left and right column (each column
 └───────────────────────────────────────┘
 ```
 
-### `COLUMN_LEFT_EDGE` — left-column X drift
+### `COLUMN_LEFT_EDGE` - left-column X drift
 
 All shapes in the left column should share the same left edge.
 
@@ -74,11 +74,11 @@ All shapes in the left column should share the same left edge.
 └────────────────────────────────────┘
 ```
 
-### `COLUMN_RIGHT_LEFT_EDGE` — right-column X drift
+### `COLUMN_RIGHT_LEFT_EDGE` - right-column X drift
 
 Same as above, for the right column.
 
-### `COLUMN_TOP_EDGE` — column top misalignment
+### `COLUMN_TOP_EDGE` - column top misalignment
 
 The topmost shape in the left column and the topmost shape in the right column should start at the same Y.
 
@@ -108,7 +108,7 @@ Detected when two-column layout is not applicable and shapes form a ≥2×2 matr
 └───────────────────────────────────────┘
 ```
 
-### `GRID_ROW_TOP` — row top-edge misalignment
+### `GRID_ROW_TOP` - row top-edge misalignment
 
 Every shape in a row should share the same top edge (within threshold).
 
@@ -119,7 +119,7 @@ Row 0:  ┌────────┐  ┌────────┐  ┌─�
         └────────┘  └────────┘  └────────┘
 ```
 
-### `GRID_COL_LEFT` — column left-edge misalignment
+### `GRID_COL_LEFT` - column left-edge misalignment
 
 Every shape in a column should share the same left edge.
 
@@ -130,7 +130,7 @@ Col 1:  ┌────────┐     ┌────────┐
         └────────┘     └────────┘
 ```
 
-### `GRID_H_SPACING` — uneven horizontal gaps
+### `GRID_H_SPACING` - uneven horizontal gaps
 
 The horizontal gap between adjacent columns should be consistent across all rows.
 
@@ -139,7 +139,7 @@ Row 0:  [A1]──500k──[A2]   ← gap 500 000 EMU (~52 px)
 Row 1:  [B1]──800k──[B2]   ← gap 800 000 EMU (~84 px)   fires
 ```
 
-### `GRID_V_SPACING` — uneven vertical gaps
+### `GRID_V_SPACING` - uneven vertical gaps
 
 The vertical gap between adjacent rows should be consistent across all columns.
 

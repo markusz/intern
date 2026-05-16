@@ -155,7 +155,7 @@ mod tests {
                 font_size: None,
                 font_family: None,
                 text_color: None,
-                // 6 words — should fire when limit=5, be silent when limit=7
+                // 6 words - should fire when limit=5, be silent when limit=7
                 paragraphs: vec!["one two three four five six".into()],
             }],
         };

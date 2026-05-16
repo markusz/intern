@@ -747,7 +747,7 @@ mod tests {
             ),
             slide(1, vec![body_with("B1", None, None, None, vec!["3. Third"])]),
         ];
-        // First alpha in "1. First" is 'F' (uppercase) — should be clean.
+        // First alpha in "1. First" is 'F' (uppercase) - should be clean.
         assert!(BulletCapitalizationRule.check(&slides, T).is_empty());
     }
 

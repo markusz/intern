@@ -1,8 +1,8 @@
 # Installation
 
-Pick whichever fits your setup — all three give you the same `intern` binary.
+Pick whichever fits your setup - all three give you the same `intern` binary.
 
-## Homebrew — macOS & Linux
+## Homebrew - macOS & Linux
 
 ```sh
 brew install markusz/intern/intern

@@ -42,8 +42,9 @@ The original is backed up to `<file>.bak`.
 | `--dry-run` | off | Print what would change without writing |
 | `--check` | off | Exit `1` if any fix would be applied (CI gate) |
 
-Not every rule is auto-fixable — text-quality and structural rules report a problem
-but leave the wording to you. See the [rules reference](./rules.md).
+Not every rule is auto-fixable. Alignment, font-size, and whitespace rules carry a
+concrete fix; the remaining text-quality and structural rules report the problem but
+leave the change to you. See the [rules reference](./rules.md).
 
 ## Use in CI
 

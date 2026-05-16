@@ -102,9 +102,9 @@ fn parse_slide_idx(path: &str) -> Option<usize> {
 /// Streams the slide XML through quick-xml, patching the attributes of targeted elements.
 ///
 /// PPTX shape structure (in document order within `<p:sp>`):
-///   `<p:nvSpPr><p:cNvPr name="..."/>` — comes first, used for name lookup
-///   `<p:spPr><a:xfrm><a:off x y/><a:ext cx cy/>` — position/size
-///   `<p:txBody>...<a:rPr sz/>` — font runs
+///   `<p:nvSpPr><p:cNvPr name="..."/>` - comes first, used for name lookup
+///   `<p:spPr><a:xfrm><a:off x y/><a:ext cx cy/>` - position/size
+///   `<p:txBody>...<a:rPr sz/>` - font runs
 ///
 /// Because `cNvPr` always precedes `<a:off>` and `<a:rPr>`, the state machine
 /// sets `current_fix` before it needs to patch anything.
@@ -413,7 +413,7 @@ mod tests {
             element_name: "Body".into(),
         };
         let result = patch_slide_xml(xml, &[&fix]).unwrap();
-        // Different shape — text should be untouched.
+        // Different shape - text should be untouched.
         assert!(result.contains("hello  world"), "got: {result}");
     }
 }

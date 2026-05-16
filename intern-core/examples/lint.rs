@@ -34,7 +34,7 @@ fn main() {
     for v in &violations {
         let slide = v.slide.map(|n| format!("slide {n}")).unwrap_or_default();
         let element = v.element.as_deref().unwrap_or("");
-        println!("[{}] {slide} {element} — {}", v.rule_id, v.message);
+        println!("[{}] {slide} {element} - {}", v.rule_id, v.message);
     }
 
     println!("\n{} violation(s)", violations.len());

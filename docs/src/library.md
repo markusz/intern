@@ -1,6 +1,6 @@
 # Using the library
 
-`intern-core` is the engine without the CLI — use it to build custom tooling,
+`intern-core` is the engine without the CLI - use it to build custom tooling,
 reporting pipelines, or editor integrations.
 
 ```toml
@@ -26,19 +26,19 @@ let violations: Vec<_> = all_rules(&limits)
     .collect();
 
 for v in &violations {
-    println!("{:?} — {}", v.rule_id, v.message);
+    println!("{:?} - {}", v.rule_id, v.message);
 }
 ```
 
 ## Key types
 
-- **`reader::read_presentation`** — parses a `.pptx` into `Vec<SlideData>`.
-- **`rules::all_rules`** — builds every rule, parameterised by `Limits`.
-- **`rules::Rule`** — the trait each rule implements: `check(&slides, threshold)`
+- **`reader::read_presentation`** - parses a `.pptx` into `Vec<SlideData>`.
+- **`rules::all_rules`** - builds every rule, parameterised by `Limits`.
+- **`rules::Rule`** - the trait each rule implements: `check(&slides, threshold)`
   returns a `Vec<Violation>`.
-- **`rules::Violation`** — carries the rule id, slide, element, a structured
+- **`rules::Violation`** - carries the rule id, slide, element, a structured
   `ViolationMessage`, and an optional `Fix`.
-- **`writer::apply_fixes`** — applies a slice of `Fix` values to a `.pptx` in place.
+- **`writer::apply_fixes`** - applies a slice of `Fix` values to a `.pptx` in place.
 
 Geometry is measured in EMU (English Metric Units); `EMU_PER_PX` converts a pixel
 tolerance into the threshold the rules expect.

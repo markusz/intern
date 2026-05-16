@@ -162,7 +162,7 @@ fn slide_order(pkg: &Package) -> Vec<String> {
 // Slide *display* order is defined by `<p:sldIdLst>` in presentation.xml, where each
 // `<p:sldId>` carries a relationship id. The .rels part maps that id to the slide part
 // path. Relationship-id order is creation order, not display order, so a reordered deck
-// would otherwise report the wrong slide numbers — only fall back to rId order when the
+// would otherwise report the wrong slide numbers - only fall back to rId order when the
 // sldIdLst is unavailable.
 fn resolve_slide_order(presentation_xml: Option<&str>, rels_xml: &str) -> Vec<String> {
     let targets = slide_rel_targets(rels_xml);

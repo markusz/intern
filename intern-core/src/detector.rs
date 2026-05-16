@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn sparse_grid_is_other() {
-        // 3 elements spanning 2 rows × 3 columns — only half the cells filled.
+        // 3 elements spanning 2 rows × 3 columns - only half the cells filled.
         let s = slide(vec![
             el(ElementKind::Image, 5_000_000, 1_000_000, 1_000_000, 800_000),
             el(ElementKind::Image, 8_000_000, 1_000_000, 1_000_000, 800_000),

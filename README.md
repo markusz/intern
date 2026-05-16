@@ -4,7 +4,7 @@
 
 > Because your real interns have better things to do than align your ppt boxes.
 
-**intern** is a linter for PowerPoint files. Point it at a `.pptx` and it tells you exactly what's wrong - misaligned boxes, inconsistent fonts, sloppy text, duplicate titles. It can fix geometric issues automatically.
+**intern** is a linter for PowerPoint files. Point it at a `.pptx` and it tells you exactly what's wrong - misaligned boxes, inconsistent fonts, sloppy text, duplicate titles. It can automatically fix alignment, font-size, and whitespace issues.
 
 Existing tools are proprietary Office add-ins or AI-powered web uploads. **intern** is the first open-source, rule-based CLI linter for PowerPoint - configurable, scriptable, and CI-friendly.
 
@@ -19,7 +19,7 @@ $ intern check quarterly.pptx
   ────────────────────────────────────────────────────────────────
   2      Title 2    TITLE_Y                title Y 34.2px off from peers
   3      Body       BODY_FONT_SIZE         body font size 18pt, expected 24pt
-  4      —          TITLE_TRAILING_PUNCT   title ends with '.'
+  4      -          TITLE_TRAILING_PUNCT   title ends with '.'
   5      Shape 3    ELEMENT_OVERFLOW       element extends outside slide bounds
   6      Body       DOUBLE_SPACE           paragraph contains double spaces
   7      Title 7    DUPLICATE_TITLE        title text also appears on slide 2
@@ -32,9 +32,9 @@ $ intern check quarterly.pptx
 
 ## Installation
 
-Pick whichever fits your setup — all three give you the same `intern` binary.
+Pick whichever fits your setup - all three give you the same `intern` binary.
 
-### Homebrew — macOS & Linux
+### Homebrew - macOS & Linux
 
 ```sh
 brew install markusz/intern/intern
@@ -95,7 +95,7 @@ That's it. No configuration required to get started.
 intern check deck.pptx --output json > violations.json
 ```
 
-Exit code is `0` if clean, `1` if violations found — standard for shell scripting and CI pipelines.
+Exit code is `0` if clean, `1` if violations found - standard for shell scripting and CI pipelines.
 
 ### Config file
 
@@ -112,11 +112,11 @@ format = "table"
 group_by = "rule"
 
 [limits]
-title_words   = 10   # TITLE_LENGTH — max words in a slide title
-bullet_words  = 20   # BULLET_LENGTH — max words in a single bullet
-font_families = 2    # FONT_VARIETY — max distinct font families
-text_colors   = 3    # COLOR_VARIETY — max distinct text colors
-slide_count   = 20   # SLIDE_COUNT — max slides in the deck
+title_words   = 10   # TITLE_LENGTH - max words in a slide title
+bullet_words  = 20   # BULLET_LENGTH - max words in a single bullet
+font_families = 2    # FONT_VARIETY - max distinct font families
+text_colors   = 3    # COLOR_VARIETY - max distinct text colors
+slide_count   = 20   # SLIDE_COUNT - max slides in the deck
 ```
 
 ---
@@ -182,7 +182,7 @@ Full rule documentation with diagrams: [RULES.md](RULES.md)
 
 ## Embed in your own tooling
 
-`intern-core` is the engine without the CLI — use it to build custom tooling, reporting pipelines, or editor integrations.
+`intern-core` is the engine without the CLI - use it to build custom tooling, reporting pipelines, or editor integrations.
 
 ```toml
 [dependencies]

@@ -275,7 +275,7 @@ impl fmt::Display for ViolationMessage {
             }
             Self::TitleMissing => write!(f, "slide has no title element"),
             Self::EmptyElement => write!(f, "no text content"),
-            Self::AllCaps => write!(f, "text is all caps — use title case or sentence case"),
+            Self::AllCaps => write!(f, "text is all caps - use title case or sentence case"),
             Self::BulletPunctuation {
                 expected_punctuation,
             } => {
@@ -301,7 +301,7 @@ impl fmt::Display for ViolationMessage {
                 write!(f, "title is {word_count} words ({limit}-word limit)")
             }
             Self::TitleTrailingPunct { punct } => {
-                write!(f, "title ends with '{punct}' — remove it")
+                write!(f, "title ends with '{punct}' - remove it")
             }
             Self::RepeatedWord { word } => write!(f, "'{word}' appears twice in a row"),
             Self::FontVariety { count, limit } => {

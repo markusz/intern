@@ -141,7 +141,7 @@ fn column_left_edge_clean_on_aligned_columns() {
 
 #[test]
 fn fix_column_left_edge_round_trips() {
-    let offset = 300 * 9_525u32; // 300 px — well beyond threshold
+    let offset = 300 * 9_525u32; // 300 px - well beyond threshold
     let slide = SlideContent::new("two-col").with_shapes(vec![
         shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
         shape_at("L2", 457_200 + offset, 2_000_000, 1_500_000, 600_000),
@@ -172,7 +172,7 @@ fn fix_grid_row_top_round_trips() {
     let col1_x: u32 = col0_x + cw + 600_000;
     let row0_y: u32 = 800_000;
     let row1_y: u32 = 3_200_000;
-    let skew: u32 = 100_000; // ~10.5 px — beyond 2 px threshold
+    let skew: u32 = 100_000; // ~10.5 px - beyond 2 px threshold
 
     let slide = SlideContent::new("grid").with_shapes(vec![
         shape_at("A1", col0_x, row0_y, cw, ch),
