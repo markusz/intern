@@ -1,5 +1,10 @@
 ![intern](logo.png)
 
+[![CI](https://github.com/markusz/intern/actions/workflows/ci.yml/badge.svg)](https://github.com/markusz/intern/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/markusz/intern/branch/main/graph/badge.svg)](https://codecov.io/gh/markusz/intern)
+[![Release](https://img.shields.io/github/v/release/markusz/intern)](https://github.com/markusz/intern/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 ---
 
 > Because your real interns have better things to do than align your ppt boxes.
