@@ -1,7 +1,8 @@
+use std::fmt::Write;
+
 use comfy_table::{
     ColumnConstraint, ContentArrangement, Table, Width, presets::UTF8_FULL_CONDENSED,
 };
-
 use intern_core::rules::{Severity, Violation};
 use serde::Serialize;
 
@@ -18,65 +19,60 @@ pub enum OutputFormat {
     Json,
 }
 
-/// Prints the per-file check results. Table and text output print a header per
-/// file when more than one file was checked; JSON always nests results under
-/// `files`.
+/// Prints the per-file check results to stdout.
 pub fn print_results(
     results: &[(String, Vec<Violation>)],
     group_by: GroupBy,
     format: OutputFormat,
 ) {
-    if let OutputFormat::Json = format {
-        print_json(results);
-        return;
+    println!("{}", render(results, group_by, format));
+}
+
+/// Renders the per-file check results into the final output string. Table and text
+/// output get a header per file when more than one file was checked; JSON always
+/// nests results under `files`.
+fn render(results: &[(String, Vec<Violation>)], group_by: GroupBy, format: OutputFormat) -> String {
+    match format {
+        OutputFormat::Json => render_json(results),
+        OutputFormat::Table => render_grouped(results, |v| render_table(v, group_by)),
+        OutputFormat::Text => render_grouped(results, |v| render_text(v, group_by)),
     }
+}
+
+fn render_grouped(
+    results: &[(String, Vec<Violation>)],
+    render_one: impl Fn(&[Violation]) -> String,
+) -> String {
     let multi = results.len() > 1;
-    for (path, violations) in results {
-        if multi {
-            println!("\n{path}");
-        }
-        match format {
-            OutputFormat::Table => print_table(violations, group_by),
-            OutputFormat::Text => print_text(violations, group_by),
-            OutputFormat::Json => {}
-        }
-    }
+    let blocks: Vec<String> = results
+        .iter()
+        .map(|(path, violations)| {
+            let block = render_one(violations);
+            if multi {
+                format!("\n{path}\n{block}")
+            } else {
+                block
+            }
+        })
+        .collect();
+
+    let mut out = blocks.join("\n");
     if multi {
-        let mut total = 0;
-        let mut errors = 0;
-        for (_, violations) in results {
-            total += violations.len();
-            errors += err_warn(violations).0;
-        }
-        println!(
-            "\n{total} violation(s) ({errors} error, {} warning) across {} file(s)",
+        let total: usize = results.iter().map(|(_, v)| v.len()).sum();
+        let errors: usize = results.iter().map(|(_, v)| err_warn(v).0).sum();
+        let _ = write!(
+            out,
+            "\n\n{total} violation(s) ({errors} error, {} warning) across {} file(s)",
             total - errors,
             results.len(),
         );
     }
+    out
 }
 
-/// Splits violations into (error count, warning count).
-fn err_warn(violations: &[Violation]) -> (usize, usize) {
-    let errors = violations
-        .iter()
-        .filter(|v| v.severity == Severity::Error)
-        .count();
-    (errors, violations.len() - errors)
-}
-
-fn summary(violations: &[Violation]) -> String {
-    let (errors, warnings) = err_warn(violations);
-    format!(
-        "{} violation(s) ({errors} error, {warnings} warning)",
-        violations.len()
-    )
-}
-
-fn print_table(violations: &[Violation], group_by: GroupBy) {
+fn render_table(violations: &[Violation], group_by: GroupBy) -> String {
     if violations.is_empty() {
-        println!("No violations found.");
-        return;
+        return "No violations found.".to_string();
     }
 
     let mut sorted = violations.to_vec();
@@ -89,7 +85,6 @@ fn print_table(violations: &[Violation], group_by: GroupBy) {
     table
         .load_preset(UTF8_FULL_CONDENSED)
         .set_content_arrangement(ContentArrangement::Dynamic);
-
     match group_by {
         GroupBy::Slide => table.set_header(vec!["Slide", "Rule", "Element", "Message"]),
         GroupBy::Rule => table.set_header(vec!["Rule", "Slide", "Element", "Message"]),
@@ -119,66 +114,93 @@ fn print_table(violations: &[Violation], group_by: GroupBy) {
         };
     }
 
-    println!("{table}");
-    println!("{}", summary(violations));
+    format!("{table}\n{}", summary(violations))
 }
 
-fn print_text(violations: &[Violation], group_by: GroupBy) {
+fn render_text(violations: &[Violation], group_by: GroupBy) -> String {
     if violations.is_empty() {
-        println!("No violations found.");
-        return;
+        return "No violations found.".to_string();
     }
     match group_by {
-        GroupBy::Slide => print_text_by_slide(violations),
-        GroupBy::Rule => print_text_by_rule(violations),
+        GroupBy::Slide => render_text_by_slide(violations),
+        GroupBy::Rule => render_text_by_rule(violations),
     }
 }
 
-fn print_text_by_slide(violations: &[Violation]) {
+fn render_text_by_slide(violations: &[Violation]) -> String {
     let mut sorted = violations.to_vec();
     sorted.sort_by_key(|v| (v.slide.unwrap_or(0), v.rule_id));
 
+    let mut out = String::new();
     let mut current: Option<usize> = None;
     for v in &sorted {
         if current != v.slide {
             current = v.slide;
             match v.slide {
-                Some(n) => println!("\nSlide {n}:"),
-                None => println!("\nPresentation-wide:"),
+                Some(n) => {
+                    let _ = writeln!(out, "\nSlide {n}:");
+                }
+                None => {
+                    let _ = writeln!(out, "\nPresentation-wide:");
+                }
             }
         }
-        if let Some(ref el) = v.element {
-            println!("  [{}] {} - {}", v.rule_id, el, v.message);
-        } else {
-            println!("  [{}] {}", v.rule_id, v.message);
+        match &v.element {
+            Some(el) => {
+                let _ = writeln!(out, "  [{}] {} - {}", v.rule_id, el, v.message);
+            }
+            None => {
+                let _ = writeln!(out, "  [{}] {}", v.rule_id, v.message);
+            }
         }
     }
-
-    println!("\n{}", summary(violations));
+    let _ = write!(out, "\n{}", summary(violations));
+    out
 }
 
-fn print_text_by_rule(violations: &[Violation]) {
+fn render_text_by_rule(violations: &[Violation]) -> String {
     let mut sorted = violations.to_vec();
     sorted.sort_by_key(|v| (v.rule_id, v.slide.unwrap_or(0)));
 
+    let mut out = String::new();
     let mut current: Option<&str> = None;
     for v in &sorted {
         if current != Some(v.rule_id) {
             current = Some(v.rule_id);
-            println!("\n[{}]:", v.rule_id);
+            let _ = writeln!(out, "\n[{}]:", v.rule_id);
         }
         let loc = v
             .slide
             .map(|n| format!("slide {n}"))
             .unwrap_or_else(|| "presentation".to_string());
-        if let Some(ref el) = v.element {
-            println!("  {loc} - {el} - {}", v.message);
-        } else {
-            println!("  {loc} - {}", v.message);
+        match &v.element {
+            Some(el) => {
+                let _ = writeln!(out, "  {loc} - {el} - {}", v.message);
+            }
+            None => {
+                let _ = writeln!(out, "  {loc} - {}", v.message);
+            }
         }
     }
+    let _ = write!(out, "\n{}", summary(violations));
+    out
+}
 
-    println!("\n{}", summary(violations));
+/// Splits violations into (error count, warning count).
+fn err_warn(violations: &[Violation]) -> (usize, usize) {
+    let errors = violations
+        .iter()
+        .filter(|v| v.severity == Severity::Error)
+        .count();
+    (errors, violations.len() - errors)
+}
+
+fn summary(violations: &[Violation]) -> String {
+    let (errors, warnings) = err_warn(violations);
+    format!(
+        "{} violation(s) ({errors} error, {warnings} warning)",
+        violations.len()
+    )
 }
 
 #[derive(Serialize)]
@@ -203,7 +225,7 @@ fn json_violation(v: &Violation) -> JsonViolation<'_> {
     }
 }
 
-fn print_json(results: &[(String, Vec<Violation>)]) {
+fn render_json(results: &[(String, Vec<Violation>)]) -> String {
     let files: Vec<_> = results
         .iter()
         .map(|(path, violations)| {
@@ -213,5 +235,115 @@ fn print_json(results: &[(String, Vec<Violation>)]) {
         .collect();
     let output = serde_json::json!({ "files": files });
     // SAFETY: the value holds only strings, numbers, and arrays - serialization is infallible.
-    println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    serde_json::to_string_pretty(&output).unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use intern_core::rules::ViolationMessage;
+
+    fn violation(rule_id: &'static str, slide: Option<usize>, severity: Severity) -> Violation {
+        Violation {
+            rule_id,
+            slide,
+            element: None,
+            message: ViolationMessage::TitleMissing,
+            severity,
+            fix: None,
+        }
+    }
+
+    fn results(items: Vec<(&str, Vec<Violation>)>) -> Vec<(String, Vec<Violation>)> {
+        items
+            .into_iter()
+            .map(|(path, vs)| (path.to_string(), vs))
+            .collect()
+    }
+
+    #[test]
+    fn summary_splits_errors_and_warnings() {
+        let vs = vec![
+            violation("A", Some(1), Severity::Error),
+            violation("B", Some(2), Severity::Warning),
+        ];
+        assert_eq!(summary(&vs), "2 violation(s) (1 error, 1 warning)");
+    }
+
+    #[test]
+    fn table_reports_no_violations_when_clean() {
+        let out = render(
+            &results(vec![("deck.pptx", vec![])]),
+            GroupBy::Slide,
+            OutputFormat::Table,
+        );
+        assert_eq!(out, "No violations found.");
+    }
+
+    #[test]
+    fn table_lists_the_rule_and_a_summary() {
+        let r = results(vec![(
+            "deck.pptx",
+            vec![violation("TITLE_PRESENT", Some(3), Severity::Error)],
+        )]);
+        let out = render(&r, GroupBy::Slide, OutputFormat::Table);
+        assert!(out.contains("TITLE_PRESENT"), "{out}");
+        assert!(out.contains("1 violation(s) (1 error, 0 warning)"), "{out}");
+    }
+
+    #[test]
+    fn text_groups_by_slide() {
+        let r = results(vec![(
+            "deck.pptx",
+            vec![violation("TITLE_PRESENT", Some(3), Severity::Error)],
+        )]);
+        let out = render(&r, GroupBy::Slide, OutputFormat::Text);
+        assert!(out.contains("Slide 3:"), "{out}");
+        assert!(out.contains("[TITLE_PRESENT]"), "{out}");
+    }
+
+    #[test]
+    fn text_groups_by_rule() {
+        let r = results(vec![(
+            "deck.pptx",
+            vec![violation("TITLE_PRESENT", Some(3), Severity::Error)],
+        )]);
+        let out = render(&r, GroupBy::Rule, OutputFormat::Text);
+        assert!(out.contains("[TITLE_PRESENT]:"), "{out}");
+        assert!(out.contains("slide 3"), "{out}");
+    }
+
+    #[test]
+    fn json_nests_violations_under_files() {
+        let r = results(vec![(
+            "deck.pptx",
+            vec![violation("TITLE_PRESENT", Some(3), Severity::Error)],
+        )]);
+        let out = render(&r, GroupBy::Slide, OutputFormat::Json);
+        assert!(out.contains("\"files\""), "{out}");
+        assert!(out.contains("\"path\": \"deck.pptx\""), "{out}");
+        assert!(out.contains("\"rule_id\": \"TITLE_PRESENT\""), "{out}");
+        assert!(out.contains("\"severity\": \"error\""), "{out}");
+    }
+
+    #[test]
+    fn multi_file_output_has_headers_and_a_grand_total() {
+        let r = results(vec![
+            (
+                "a.pptx",
+                vec![violation("TITLE_PRESENT", Some(1), Severity::Error)],
+            ),
+            (
+                "b.pptx",
+                vec![violation("ALL_CAPS", Some(2), Severity::Warning)],
+            ),
+        ]);
+        let out = render(&r, GroupBy::Slide, OutputFormat::Table);
+        assert!(out.contains("a.pptx"), "{out}");
+        assert!(out.contains("b.pptx"), "{out}");
+        assert!(
+            out.contains("2 violation(s) (1 error, 1 warning) across 2 file(s)"),
+            "{out}"
+        );
+    }
 }

@@ -317,3 +317,57 @@ fn no_violations_on_perfectly_aligned_deck() {
         "all rules should be silent on a perfectly aligned deck: {v:#?}"
     );
 }
+
+#[test]
+fn element_overflow_detected() {
+    // A shape whose right edge runs past the 9_144_000 EMU slide width.
+    let slide = SlideContent::new("overflow").with_shapes(vec![shape_at(
+        "OffEdge", 8_000_000, 1_000_000, 2_000_000, 500_000,
+    )]);
+    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
+    let path = write_tmp(&bytes, "overflow");
+
+    let v = violations_for(&path, "ELEMENT_OVERFLOW");
+    cleanup(&path);
+    assert!(
+        !v.is_empty(),
+        "expected ELEMENT_OVERFLOW for a shape past the slide edge"
+    );
+}
+
+#[test]
+fn element_overlap_detected() {
+    let slide = SlideContent::new("overlap").with_shapes(vec![
+        shape_at("A", 1_000_000, 3_000_000, 2_000_000, 2_000_000),
+        shape_at("B", 2_000_000, 4_000_000, 2_000_000, 2_000_000),
+    ]);
+    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
+    let path = write_tmp(&bytes, "overlap");
+
+    let v = violations_for(&path, "ELEMENT_OVERLAP");
+    cleanup(&path);
+    assert!(
+        !v.is_empty(),
+        "expected ELEMENT_OVERLAP for two intersecting shapes"
+    );
+}
+
+#[test]
+fn double_space_detected() {
+    let slide = SlideContent::new("text").with_shapes(vec![shape_at(
+        "Two  spaces in this box",
+        1_000_000,
+        3_000_000,
+        4_000_000,
+        1_000_000,
+    )]);
+    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
+    let path = write_tmp(&bytes, "double_space");
+
+    let v = violations_for(&path, "DOUBLE_SPACE");
+    cleanup(&path);
+    assert!(
+        !v.is_empty(),
+        "expected DOUBLE_SPACE for shape text with a double space"
+    );
+}

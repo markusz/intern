@@ -525,4 +525,148 @@ mod tests {
         assert_eq!(f.slide_idx(), 3);
         assert_eq!(f.element_name(), "E");
     }
+
+    #[test]
+    fn fix_normalize_whitespace_display() {
+        let f = Fix::NormalizeWhitespace {
+            slide_idx: 0,
+            element_name: "Body".into(),
+        };
+        assert!(f.to_string().contains("normalize whitespace"), "{f}");
+    }
+
+    #[test]
+    fn title_y_off_renders_higher_and_lower() {
+        let lower = ViolationMessage::TitleYOff {
+            actual_emu: 400_000,
+            expected_emu: 100_000,
+        };
+        assert!(lower.to_string().contains("lower"), "{lower}");
+        let higher = ViolationMessage::TitleYOff {
+            actual_emu: 100_000,
+            expected_emu: 400_000,
+        };
+        assert!(higher.to_string().contains("higher"), "{higher}");
+    }
+
+    #[test]
+    fn violation_message_display_covers_every_variant() {
+        use ViolationMessage::*;
+        assert_eq!(
+            BodyFontSize {
+                actual: 1800,
+                expected: 2400
+            }
+            .to_string(),
+            "body font size 18pt, expected 24pt"
+        );
+        assert!(
+            BodyFontFamily {
+                actual: "Arial".into(),
+                expected: "Calibri".into()
+            }
+            .to_string()
+            .contains("Arial")
+        );
+        assert!(
+            BodyTextColor {
+                actual: "FF0000".into(),
+                expected: "000000".into()
+            }
+            .to_string()
+            .contains("FF0000")
+        );
+        assert_eq!(
+            ElementOverflow.to_string(),
+            "element extends outside slide bounds"
+        );
+        assert_eq!(DoubleSpace.to_string(), "paragraph contains double spaces");
+        assert!(TrailingSpace.to_string().contains("whitespace"));
+        assert!(
+            BulletCapitalization {
+                expected_uppercase: true
+            }
+            .to_string()
+            .contains("uppercase")
+        );
+        assert!(
+            BulletCapitalization {
+                expected_uppercase: false
+            }
+            .to_string()
+            .contains("lowercase")
+        );
+        assert_eq!(TitleMissing.to_string(), "slide has no title element");
+        assert_eq!(EmptyElement.to_string(), "no text content");
+        assert!(AllCaps.to_string().contains("all caps"));
+        assert!(
+            BulletPunctuation {
+                expected_punctuation: true
+            }
+            .to_string()
+            .contains("punctuation")
+        );
+        assert!(
+            BulletPunctuation {
+                expected_punctuation: false
+            }
+            .to_string()
+            .contains("punctuation")
+        );
+        assert!(
+            BulletTooLong {
+                word_count: 25,
+                limit: 20
+            }
+            .to_string()
+            .contains("25")
+        );
+        assert_eq!(
+            DuplicateTitle { first_slide: 2 }.to_string(),
+            "same title as slide 2"
+        );
+        assert!(
+            TitleTooLong {
+                word_count: 12,
+                limit: 10
+            }
+            .to_string()
+            .contains("12")
+        );
+        assert!(TitleTrailingPunct { punct: '!' }.to_string().contains('!'));
+        assert!(
+            RepeatedWord { word: "the".into() }
+                .to_string()
+                .contains("the")
+        );
+        assert!(FontVariety { count: 4, limit: 2 }.to_string().contains('4'));
+        assert!(
+            ColorVariety { count: 5, limit: 3 }
+                .to_string()
+                .contains('5')
+        );
+        assert!(
+            SlideCount {
+                count: 30,
+                limit: 20
+            }
+            .to_string()
+            .contains("30")
+        );
+        assert!(
+            ElementOverlap {
+                other_element: "Box 2".into()
+            }
+            .to_string()
+            .contains("Box 2")
+        );
+        assert!(
+            ImageAspectRatio {
+                actual_ratio: 1.33,
+                expected_ratio: 1.78
+            }
+            .to_string()
+            .contains("1.33")
+        );
+    }
 }
