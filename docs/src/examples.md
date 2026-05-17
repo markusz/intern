@@ -40,7 +40,7 @@ Never used a command-line tool? Three steps.
   2      TITLE_Y               Title 2   title is 34.2px lower than on most slides
   4      TITLE_TRAILING_PUNCT  -         title ends with '.' - remove it
 
-2 violation(s)
+2 violation(s) (2 error, 0 warning)
 ```
 
 - **Slide** - where the problem is (slide 1 is the first slide).
@@ -117,8 +117,8 @@ fine.
 ### Turn rules on or off
 
 ```sh
-intern check deck.pptx --disable ALL_CAPS,SLIDE_COUNT   # skip these
-intern check deck.pptx --rules TITLE_Y,TITLE_X_WIDTH    # run only these
+intern check deck.pptx --disable ALL_CAPS,TITLE_TRAILING_PUNCT  # skip these
+intern check deck.pptx --rules TITLE_Y,TITLE_X_WIDTH            # run only these
 ```
 
 Rule ids come from the [Rules reference](./rules.md); a typo is rejected with an
@@ -160,8 +160,9 @@ Settings you want on every deck you lint, regardless of project, go in
 
 ### Gate a CI build
 
-`intern check` exits `0` when clean and `1` on violations - point it at a folder
-to gate every deck. GitHub Actions, saved as `.github/workflows/decks.yml`:
+`intern check` exits `0` when clean (or only warnings) and `1` on an error-severity
+violation - point it at a folder to gate every deck. GitHub Actions, saved as
+`.github/workflows/decks.yml`:
 
 ```yaml
 name: decks
@@ -198,7 +199,7 @@ JSON output nests violations under each file:
           "slide": 2,
           "element": "Title 2",
           "message": "title is 34.2px lower than on most slides",
-          "severity": "warning"
+          "severity": "error"
         }
       ]
     }

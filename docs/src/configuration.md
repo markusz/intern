@@ -39,13 +39,16 @@ severity = "warning"  # report it, but don't fail CI
 threshold = 1         # tighter tolerance, just for this rule
 
 [rules.SLIDE_COUNT]
-enabled = false       # turn a rule off entirely
+enabled = true        # SLIDE_COUNT is off by default; enable it explicitly
+max_slides = 40
 ```
 
 ## Per-rule tables
 
 Each rule can be configured in its own `[rules.<RULE_ID>]` table. A rule with no
-table runs enabled with default settings.
+table runs with default settings - except `SLIDE_COUNT`, which is **off by default**
+(its slide limit is too deck-specific) and runs only when its table sets
+`enabled = true`.
 
 - `enabled = false` turns the rule off.
 - `severity` is `"error"` (the default) or `"warning"`. `intern check` exits

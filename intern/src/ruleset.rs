@@ -2,6 +2,15 @@ use intern_core::rules::{self, Rule};
 
 use crate::config::Config;
 
+/// Rules that do not run unless opted in - their default threshold is too
+/// deck-specific to be a useful blanket check. A default-off rule runs only when its
+/// `[rules.X]` table sets `enabled = true`, or it is named in `only` / `--rules`.
+const DEFAULT_OFF: &[&str] = &["SLIDE_COUNT"];
+
+fn is_default_off(id: &str) -> bool {
+    DEFAULT_OFF.contains(&id)
+}
+
 /// The outcome of resolving which rules to run: the active rule set plus any
 /// non-fatal warnings (e.g. a rule both whitelisted and disabled).
 pub struct Selection {
@@ -55,13 +64,15 @@ pub fn select(
     }
 
     all.retain(|r| {
-        if is_off(r.id()) {
+        let id = r.id();
+        if is_off(id) {
             return false;
         }
-        match &whitelist {
-            Some(only) => only.iter().any(|w| w == r.id()),
-            None => true,
+        if let Some(only) = &whitelist {
+            return only.iter().any(|w| w == id);
         }
+        // No whitelist: every rule runs except a default-off rule not explicitly enabled.
+        !is_default_off(id) || per_rule_on.iter().any(|e| e == id)
     });
 
     Ok(Selection {
@@ -193,5 +204,43 @@ mod tests {
         let sel = select(&cfg, Some(vec!["TITLE_X_WIDTH".into()]), None).unwrap();
         assert_eq!(sel.rules.len(), 1);
         assert_eq!(sel.rules[0].id(), "TITLE_X_WIDTH");
+    }
+
+    #[test]
+    fn default_off_rule_is_excluded_without_opt_in() {
+        let sel = select(&Config::default(), None, None).unwrap();
+        assert!(sel.rules.iter().all(|r| r.id() != "SLIDE_COUNT"));
+    }
+
+    #[test]
+    fn default_off_rule_runs_when_explicitly_enabled() {
+        let cfg = config(vec![("SLIDE_COUNT", on())], &[], None);
+        let sel = select(&cfg, None, None).unwrap();
+        assert!(sel.rules.iter().any(|r| r.id() == "SLIDE_COUNT"));
+    }
+
+    #[test]
+    fn default_off_rule_stays_off_with_options_but_no_enable() {
+        // A table that only sets options does not switch a default-off rule on.
+        let cfg = config(
+            vec![(
+                "SLIDE_COUNT",
+                RuleTable {
+                    max_slides: Some(40),
+                    ..RuleTable::default()
+                },
+            )],
+            &[],
+            None,
+        );
+        let sel = select(&cfg, None, None).unwrap();
+        assert!(sel.rules.iter().all(|r| r.id() != "SLIDE_COUNT"));
+    }
+
+    #[test]
+    fn default_off_rule_runs_when_whitelisted() {
+        let sel = select(&Config::default(), Some(vec!["SLIDE_COUNT".into()]), None).unwrap();
+        assert_eq!(sel.rules.len(), 1);
+        assert_eq!(sel.rules[0].id(), "SLIDE_COUNT");
     }
 }

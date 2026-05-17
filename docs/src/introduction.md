@@ -21,7 +21,7 @@ $ intern check quarterly.pptx
   4      TITLE_TRAILING_PUNCT  -         title ends with '.' - remove it
   7      DUPLICATE_TITLE       Title 7   same title as slide 2
 
-4 violation(s)
+4 violation(s) (4 error, 0 warning)
 ```
 
 ## How it works
@@ -30,7 +30,7 @@ $ intern check quarterly.pptx
 2. Each [rule](./rules.md) inspects the deck and reports violations.
 3. Most violations carry a suggested fix - alignment, font sizes, and whitespace - and `intern fix` applies them in place.
 
-Exit code is `0` when the deck is clean and `1` when violations are found - so it
-drops straight into a CI pipeline.
+Exit code is `0` when the deck is clean or has only warnings, and `1` when an
+error-severity violation is found - so it drops straight into a CI pipeline.
 
 Head to [Installation](./installation.md) to get started.

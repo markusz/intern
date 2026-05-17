@@ -15,17 +15,17 @@ Existing tools are proprietary Office add-ins or AI-powered web uploads. **inter
 ```
 $ intern check quarterly.pptx
 
-  slide  element    rule                   message
-  ────────────────────────────────────────────────────────────────
-  2      Title 2    TITLE_Y                title Y 34.2px off from peers
-  3      Body       BODY_FONT_SIZE         body font size 18pt, expected 24pt
-  4      -          TITLE_TRAILING_PUNCT   title ends with '.'
-  5      Shape 3    ELEMENT_OVERFLOW       element extends outside slide bounds
-  6      Body       DOUBLE_SPACE           paragraph contains double spaces
-  7      Title 7    DUPLICATE_TITLE        title text also appears on slide 2
-  9      Image 2    IMAGE_ASPECT_RATIO     image aspect ratio 1.33 differs from majority 1.78
+  Slide  Rule                  Element  Message
+  ────────────────────────────────────────────────────────────────────────────
+  2      TITLE_Y               Title 2  title is 34.2px lower than on most slides
+  3      BODY_FONT_SIZE        Body     body font size 18pt, expected 24pt
+  4      TITLE_TRAILING_PUNCT  -        title ends with '.' - remove it
+  5      ELEMENT_OVERFLOW      Shape 3  element extends outside slide bounds
+  6      DOUBLE_SPACE          Body     paragraph contains double spaces
+  7      DUPLICATE_TITLE       Title 7  same title as slide 2
+  9      IMAGE_ASPECT_RATIO    Image 2  image aspect ratio 1.33 differs from majority 1.78
 
-7 violations
+7 violation(s) (7 error, 0 warning)
 ```
 
 ---
@@ -76,7 +76,9 @@ intern check slides/      # check every .pptx in a folder
 intern fix deck.pptx      # auto-fix violations in place
 ```
 
-That's it. No configuration required to get started.
+That's it. No configuration required to get started - but for ongoing use, most
+teams keep an `.intern.toml` with their preferred thresholds and rule set (see
+[Config file](#config-file) below).
 
 ### Options
 
@@ -96,7 +98,7 @@ That's it. No configuration required to get started.
 intern check deck.pptx --output json > violations.json
 ```
 
-Exit code is `0` if clean, `1` if violations found - standard for shell scripting and CI pipelines.
+Exit code is `0` when clean (or only warnings) and `1` when an error-severity violation is found - standard for shell scripting and CI pipelines.
 
 ### Config file
 
@@ -126,70 +128,87 @@ max_words = 8
 severity = "warning"   # report it, but don't fail CI
 
 [rules.SLIDE_COUNT]
-enabled = false
+enabled = true         # SLIDE_COUNT is off by default; enable it explicitly
+max_slides = 40
 ```
 
 Each rule is configured in its own `[rules.<RULE_ID>]` table; `disable` and `only`
 are blunt top-level lists. See the [documentation](https://markusz.github.io/intern/configuration.html) for the full reference.
 
+### Skipping a slide
+
+Exclude a slide from checks by adding a line to its **speaker notes** - handy for
+title slides, section dividers, or a deliberately different layout:
+
+```text
+intern: disable                        # skip every rule on this slide
+intern: disable TITLE_Y, GRID_ROW_TOP  # skip only these rules
+```
+
+The slide is dropped before those rules run, so it skews no baselines (like the
+median title position) either.
+
 ---
 
 ## Rules
 
-31 rules across four categories. Every rule can be disabled with `--disable`.
+31 rules across four categories. They all run by default **except `SLIDE_COUNT`**,
+whose slide limit is too deck-specific for a blanket check - opt into it with
+`enabled = true` under `[rules.SLIDE_COUNT]`. Any rule can be turned off with
+`--disable`.
 
 ### Alignment
 
-| Rule | What it catches |
-|---|---|
-| `TITLE_Y` | Title top-edge inconsistent across slides |
-| `TITLE_X_WIDTH` | Title left-edge or width inconsistent across slides |
-| `COLUMN_LEFT_EDGE` | Left-column elements have inconsistent left edges |
-| `COLUMN_TOP_EDGE` | Left and right columns don't start at the same Y |
-| `COLUMN_RIGHT_LEFT_EDGE` | Right-column elements have inconsistent left edges |
-| `GRID_H_SPACING` | Horizontal gaps between grid elements are uneven |
-| `GRID_V_SPACING` | Vertical gaps between grid elements are uneven |
-| `GRID_ROW_TOP` | Elements in the same grid row have misaligned top edges |
-| `GRID_COL_LEFT` | Elements in the same grid column have misaligned left edges |
-| `ELEMENT_OVERLAP` | Two elements on the same slide have overlapping rects |
-| `ELEMENT_OVERFLOW` | Element extends outside the slide bounds |
+| Rule | What it catches | Default |
+|---|---|---|
+| `TITLE_Y` | Title top-edge inconsistent across slides | 2 px |
+| `TITLE_X_WIDTH` | Title left-edge or width inconsistent across slides | 2 px |
+| `COLUMN_LEFT_EDGE` | Left-column elements have inconsistent left edges | 2 px |
+| `COLUMN_TOP_EDGE` | Left and right columns don't start at the same Y | 2 px |
+| `COLUMN_RIGHT_LEFT_EDGE` | Right-column elements have inconsistent left edges | 2 px |
+| `GRID_H_SPACING` | Horizontal gaps between grid elements are uneven | 2 px |
+| `GRID_V_SPACING` | Vertical gaps between grid elements are uneven | 2 px |
+| `GRID_ROW_TOP` | Elements in the same grid row have misaligned top edges | 2 px |
+| `GRID_COL_LEFT` | Elements in the same grid column have misaligned left edges | 2 px |
+| `ELEMENT_OVERLAP` | Two elements on the same slide have overlapping rects | - |
+| `ELEMENT_OVERFLOW` | Element extends outside the slide bounds | - |
 
 ### Typography
 
-| Rule | What it catches |
-|---|---|
-| `TITLE_FONT_SIZE` | Title font size differs from the majority |
-| `BODY_FONT_SIZE` | Body font size differs from the majority across slides |
-| `BODY_FONT_FAMILY` | Body font family differs from the majority across slides |
-| `BODY_TEXT_COLOR` | Body text color differs from the majority across slides |
-| `FONT_VARIETY` | More than 2 distinct font families across the deck |
-| `COLOR_VARIETY` | More than 3 distinct text colors across the deck |
-| `IMAGE_ASPECT_RATIO` | Image aspect ratio differs from the deck majority by >5% |
+| Rule | What it catches | Default |
+|---|---|---|
+| `TITLE_FONT_SIZE` | Title font size differs from the majority | - |
+| `BODY_FONT_SIZE` | Body font size differs from the majority across slides | - |
+| `BODY_FONT_FAMILY` | Body font family differs from the majority across slides | - |
+| `BODY_TEXT_COLOR` | Body text color differs from the majority across slides | - |
+| `FONT_VARIETY` | Too many distinct font families across the deck | 2 families |
+| `COLOR_VARIETY` | Too many distinct text colors across the deck | 3 colors |
+| `IMAGE_ASPECT_RATIO` | Image aspect ratio differs from the deck majority | 5% |
 
 ### Text quality
 
-| Rule | What it catches |
-|---|---|
-| `DOUBLE_SPACE` | Paragraph contains two or more consecutive spaces |
-| `TRAILING_SPACE` | Paragraph has leading or trailing whitespace |
-| `ALL_CAPS` | Paragraph text is ALL CAPS |
-| `REPEATED_WORD` | Two consecutive identical words ("the the") |
-| `BULLET_CAPITALIZATION` | Bullets have inconsistent first-letter capitalization |
-| `BULLET_PUNCTUATION` | Bullet ending punctuation is inconsistent across the deck |
-| `BULLET_LENGTH` | Bullet exceeds 20 words |
+| Rule | What it catches | Default |
+|---|---|---|
+| `DOUBLE_SPACE` | Paragraph contains two or more consecutive spaces | - |
+| `TRAILING_SPACE` | Paragraph has leading or trailing whitespace | - |
+| `ALL_CAPS` | Paragraph text is ALL CAPS | - |
+| `REPEATED_WORD` | Two consecutive identical words ("the the") | - |
+| `BULLET_CAPITALIZATION` | Bullets have inconsistent first-letter capitalization | - |
+| `BULLET_PUNCTUATION` | Bullet ending punctuation is inconsistent across the deck | - |
+| `BULLET_LENGTH` | Bullet is too long | 20 words |
 
 ### Structure
 
-| Rule | What it catches |
-|---|---|
-| `TITLE_PRESENT` | Slide has no title element |
-| `TITLE_LENGTH` | Title exceeds 10 words |
-| `TITLE_TRAILING_PUNCT` | Title ends with `.` `!` or `?` |
-| `DUPLICATE_TITLE` | Title text is duplicated on another slide |
-| `EMPTY_ELEMENT` | Body or textbox element has no text content |
-| `SLIDE_COUNT` | Deck has more than 20 slides |
+| Rule | What it catches | Default |
+|---|---|---|
+| `TITLE_PRESENT` | Slide has no title element | - |
+| `TITLE_LENGTH` | Title is too long | 10 words |
+| `TITLE_TRAILING_PUNCT` | Title ends with `.` `!` or `?` | - |
+| `DUPLICATE_TITLE` | Title text is duplicated on another slide | - |
+| `EMPTY_ELEMENT` | Body or textbox element has no text content | - |
+| `SLIDE_COUNT` | Deck has too many slides | 20 slides |
 
-Full rule documentation with diagrams: [RULES.md](RULES.md)
+The geometric rules, illustrated with diagrams: [RULES.md](RULES.md)
 
 ---
 
