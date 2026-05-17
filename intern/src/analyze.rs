@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ops::Deref;
 
 use intern_core::model::{self, Presentation, SlideData};
@@ -77,23 +77,7 @@ pub fn check_file(
             findings.push(Finding { violation, excerpt });
         }
     }
-    dedup_findings(&mut findings);
     Ok(findings)
-}
-
-/// Drops findings indistinguishable in the report - same rule, slide, element
-/// name, and message. Decks with duplicate shape names (template placeholders,
-/// stacked copies) otherwise produce rows the reader cannot tell apart.
-fn dedup_findings(findings: &mut Vec<Finding>) {
-    let mut seen = HashSet::new();
-    findings.retain(|f| {
-        seen.insert((
-            f.violation.rule_id,
-            f.violation.slide,
-            f.violation.element.clone(),
-            f.violation.message.to_string(),
-        ))
-    });
 }
 
 /// A short snippet of a violation's offending element text. Looks the element up
@@ -229,26 +213,6 @@ mod tests {
             ],
         }];
         assert!(excerpt_for(&slides, &violation(Some(1), Some("Dup"))).is_none());
-    }
-
-    #[test]
-    fn dedup_findings_drops_indistinguishable_rows() {
-        let mut findings = vec![
-            Finding {
-                violation: violation(Some(1), Some("Box")),
-                excerpt: None,
-            },
-            Finding {
-                violation: violation(Some(1), Some("Box")),
-                excerpt: None,
-            },
-            Finding {
-                violation: violation(Some(2), Some("Box")),
-                excerpt: None,
-            },
-        ];
-        dedup_findings(&mut findings);
-        assert_eq!(findings.len(), 2);
     }
 
     #[test]
