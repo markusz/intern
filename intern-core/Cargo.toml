@@ -3,6 +3,12 @@ name = "intern-core"
 version = "0.4.0"
 edition = "2024"
 license = "MIT"
+description = "The rule engine behind intern, a linter for PowerPoint (.pptx) files"
+repository = "https://github.com/markusz/intern"
+readme = "README.md"
+homepage = "https://markusz.github.io/intern/"
+keywords = ["powerpoint", "pptx", "linter", "presentation"]
+categories = ["development-tools"]
 
 [dependencies]
 ppt-rs = "0.2.14"

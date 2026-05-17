@@ -5,6 +5,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 #[derive(Parser, Debug)]
 #[command(
     name = "intern",
+    version,
     about = "Because your real interns have better things to do than align your ppt boxes",
     args_conflicts_with_subcommands = true,
     subcommand_negates_reqs = true
