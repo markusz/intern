@@ -152,8 +152,8 @@ pub enum ViolationMessage {
     BodyTextColor { actual: String, expected: String },
     /// Paragraph contains two or more consecutive spaces.
     DoubleSpace,
-    /// Paragraph has leading or trailing whitespace.
-    TrailingSpace,
+    /// Paragraph starts with whitespace.
+    LeadingSpace,
     /// Bullet paragraphs within an element have inconsistent first-letter capitalization.
     BulletCapitalization { expected_uppercase: bool },
     /// Slide has no title element.
@@ -180,13 +180,8 @@ pub enum ViolationMessage {
     ColorVariety { count: usize, limit: usize },
     /// Deck has more slides than the limit.
     SlideCount { count: usize, limit: usize },
-    /// Element rect overlaps with another element on the same slide.
+    /// A text-bearing element rect overlaps another text-bearing element on the same slide.
     ElementOverlap { other_element: String },
-    /// Image aspect ratio differs from the deck majority.
-    ImageAspectRatio {
-        actual_ratio: f64,
-        expected_ratio: f64,
-    },
 }
 
 const EMU_PER_PX: f64 = 9525.0;
@@ -259,7 +254,7 @@ impl fmt::Display for ViolationMessage {
                 write!(f, "text color #{actual}, most elements use #{expected}")
             }
             Self::DoubleSpace => write!(f, "paragraph contains double spaces"),
-            Self::TrailingSpace => write!(f, "paragraph has leading or trailing whitespace"),
+            Self::LeadingSpace => write!(f, "paragraph starts with whitespace"),
             Self::BulletCapitalization { expected_uppercase } => {
                 if *expected_uppercase {
                     write!(
@@ -316,13 +311,6 @@ impl fmt::Display for ViolationMessage {
             Self::ElementOverlap { other_element } => {
                 write!(f, "bounding box overlaps with '{other_element}'")
             }
-            Self::ImageAspectRatio {
-                actual_ratio,
-                expected_ratio,
-            } => write!(
-                f,
-                "image aspect ratio {actual_ratio:.2} differs from majority {expected_ratio:.2}"
-            ),
         }
     }
 }
@@ -338,9 +326,19 @@ pub struct Violation {
     pub fix: Option<Fix>,
 }
 
+/// Deck-wide context handed to every rule's `check`. `threshold` is this rule's
+/// geometric comparison tolerance in EMU; `slide_width` / `slide_height` are the
+/// deck's actual slide dimensions, read from `<p:sldSz>`.
+#[derive(Debug, Clone)]
+pub struct RuleContext {
+    pub threshold: i64,
+    pub slide_width: i64,
+    pub slide_height: i64,
+}
+
 pub trait Rule {
     fn id(&self) -> &'static str;
-    fn check(&self, slides: &[SlideData], threshold: i64) -> Vec<Violation>;
+    fn check(&self, slides: &[SlideData], ctx: &RuleContext) -> Vec<Violation>;
 }
 
 /// Configurable numeric limits for rules that enforce "must be ≤ N" policies.
@@ -350,9 +348,9 @@ pub struct Limits {
     pub title_words: usize,
     /// Maximum words allowed in a single bullet point (default 20).
     pub bullet_words: usize,
-    /// Maximum distinct font families across the deck (default 2).
+    /// Maximum distinct font families across the deck (default 4).
     pub font_families: usize,
-    /// Maximum distinct text colors across the deck (default 3).
+    /// Maximum distinct text colors across the deck (default 6).
     pub text_colors: usize,
     /// Maximum number of slides in the deck (default 20).
     pub slide_count: usize,
@@ -363,8 +361,8 @@ impl Default for Limits {
         Self {
             title_words: 10,
             bullet_words: 20,
-            font_families: 2,
-            text_colors: 3,
+            font_families: 4,
+            text_colors: 6,
             slide_count: 20,
         }
     }
@@ -386,7 +384,7 @@ pub fn all_rules(limits: &Limits) -> Vec<Box<dyn Rule>> {
         Box::new(text::BodyFontFamilyRule),
         Box::new(text::BodyTextColorRule),
         Box::new(text::DoubleSpaceRule),
-        Box::new(text::TrailingSpaceRule),
+        Box::new(text::LeadingSpaceRule),
         Box::new(text::BulletCapitalizationRule),
         Box::new(text::AllCapsRule),
         Box::new(text::BulletPunctuationRule),
@@ -396,8 +394,7 @@ pub fn all_rules(limits: &Limits) -> Vec<Box<dyn Rule>> {
         Box::new(layout::TitlePresentRule),
         Box::new(layout::EmptyElementRule),
         Box::new(layout::ElementOverflowRule),
-        Box::new(layout::ElementOverlapRule),
-        Box::new(layout::ImageAspectRatioRule),
+        Box::new(layout::TextElementOverlapRule),
         Box::new(layout::SlideCountRule {
             limit: limits.slide_count,
         }),
@@ -581,7 +578,7 @@ mod tests {
             "element extends outside slide bounds"
         );
         assert_eq!(DoubleSpace.to_string(), "paragraph contains double spaces");
-        assert!(TrailingSpace.to_string().contains("whitespace"));
+        assert!(LeadingSpace.to_string().contains("whitespace"));
         assert!(
             BulletCapitalization {
                 expected_uppercase: true
@@ -659,14 +656,6 @@ mod tests {
             }
             .to_string()
             .contains("Box 2")
-        );
-        assert!(
-            ImageAspectRatio {
-                actual_ratio: 1.33,
-                expected_ratio: 1.78
-            }
-            .to_string()
-            .contains("1.33")
         );
     }
 }

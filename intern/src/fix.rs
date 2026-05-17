@@ -35,7 +35,7 @@ fn fix_one(
 ) -> miette::Result<()> {
     let fixes: Vec<rules::Fix> = analyze::check_file(path, slide, global_px, cfg, selection)?
         .into_iter()
-        .filter_map(|v| v.fix)
+        .filter_map(|f| f.violation.fix)
         .collect();
 
     if fixes.is_empty() {

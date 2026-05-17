@@ -2,13 +2,13 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 use crate::model::{ElementKind, SlideData, SlideElement};
-use crate::rules::{Fix, Rule, Severity, Violation, ViolationMessage};
+use crate::rules::{Fix, Rule, RuleContext, Severity, Violation, ViolationMessage};
 
 pub struct BodyFontSizeRule;
 pub struct BodyFontFamilyRule;
 pub struct BodyTextColorRule;
 pub struct DoubleSpaceRule;
-pub struct TrailingSpaceRule;
+pub struct LeadingSpaceRule;
 pub struct BulletCapitalizationRule;
 pub struct AllCapsRule;
 pub struct BulletPunctuationRule;
@@ -23,13 +23,22 @@ pub struct ColorVarietyRule {
     pub limit: usize,
 }
 
+// Text-bearing element kinds: body placeholders, genuine text boxes, and
+// autoshapes (which may carry text). Excludes titles and images.
+fn is_text_element(kind: &ElementKind) -> bool {
+    matches!(
+        kind,
+        ElementKind::Body | ElementKind::TextBox | ElementKind::Autoshape
+    )
+}
+
 fn body_elements(slides: &[SlideData]) -> Vec<(usize, &SlideElement)> {
     slides
         .iter()
         .flat_map(|s| {
             s.elements
                 .iter()
-                .filter(|e| matches!(e.kind, ElementKind::Body | ElementKind::TextBox))
+                .filter(|e| is_text_element(&e.kind))
                 .map(move |e| (s.index, e))
         })
         .collect()
@@ -48,7 +57,7 @@ impl Rule for BodyFontSizeRule {
         "BODY_FONT_SIZE"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let es = body_elements(slides);
         let sized: Vec<(usize, String, u32)> = es
             .iter()
@@ -90,7 +99,7 @@ impl Rule for BodyFontFamilyRule {
         "BODY_FONT_FAMILY"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let es = body_elements(slides);
         let familied: Vec<(usize, String, String)> = es
             .iter()
@@ -132,7 +141,7 @@ impl Rule for BodyTextColorRule {
         "BODY_TEXT_COLOR"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let es = body_elements(slides);
         let colored: Vec<(usize, String, String)> = es
             .iter()
@@ -174,7 +183,7 @@ impl Rule for DoubleSpaceRule {
         "DOUBLE_SPACE"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
         for slide in slides {
             for e in &slide.elements {
@@ -197,21 +206,27 @@ impl Rule for DoubleSpaceRule {
     }
 }
 
-impl Rule for TrailingSpaceRule {
+impl Rule for LeadingSpaceRule {
     fn id(&self) -> &'static str {
-        "TRAILING_SPACE"
+        "LEADING_SPACE"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    // Only leading whitespace is flagged: it indents visible text. Trailing
+    // whitespace is kept in the file by PowerPoint but renders nothing on the
+    // slide, so flagging it is just noise.
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
         for slide in slides {
             for e in &slide.elements {
-                if e.paragraphs.iter().any(|p| p != p.trim()) {
+                if e.paragraphs
+                    .iter()
+                    .any(|p| p.starts_with(|c: char| c.is_whitespace()))
+                {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
                         element: Some(e.name.clone()),
-                        message: ViolationMessage::TrailingSpace,
+                        message: ViolationMessage::LeadingSpace,
                         severity: Severity::Warning,
                         fix: Some(Fix::NormalizeWhitespace {
                             slide_idx: slide.index,
@@ -247,7 +262,7 @@ impl Rule for BulletCapitalizationRule {
         "BULLET_CAPITALIZATION"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let es = body_elements(slides);
 
         let all: Vec<(bool, usize, &str)> = es
@@ -288,11 +303,11 @@ impl Rule for AllCapsRule {
         "ALL_CAPS"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
         for slide in slides {
             for e in &slide.elements {
-                if !matches!(e.kind, ElementKind::Body | ElementKind::TextBox) {
+                if !is_text_element(&e.kind) {
                     continue;
                 }
                 let has_all_caps = e.paragraphs.iter().any(|p| {
@@ -324,7 +339,7 @@ impl Rule for BulletPunctuationRule {
         "BULLET_PUNCTUATION"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let es = body_elements(slides);
         let bullets: Vec<(bool, usize, &str)> = es
             .iter()
@@ -367,11 +382,11 @@ impl Rule for BulletLengthRule {
         "BULLET_LENGTH"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
         for slide in slides {
             for e in &slide.elements {
-                if !matches!(e.kind, ElementKind::Body | ElementKind::TextBox) {
+                if !is_text_element(&e.kind) {
                     continue;
                 }
                 for p in &e.paragraphs {
@@ -407,7 +422,7 @@ impl Rule for RepeatedWordRule {
         "REPEATED_WORD"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let mut violations = Vec::new();
         for slide in slides {
             for e in &slide.elements {
@@ -438,7 +453,7 @@ impl Rule for FontVarietyRule {
         "FONT_VARIETY"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let fonts: HashSet<String> = slides
             .iter()
             .flat_map(|s| s.elements.iter())
@@ -466,7 +481,7 @@ impl Rule for ColorVarietyRule {
         "COLOR_VARIETY"
     }
 
-    fn check(&self, slides: &[SlideData], _threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let colors: HashSet<String> = slides
             .iter()
             .flat_map(|s| s.elements.iter())
@@ -494,7 +509,11 @@ mod tests {
     use super::*;
     use crate::model::{ElementKind, Rect, SlideData, SlideElement};
 
-    const T: i64 = 19_050;
+    const T: RuleContext = RuleContext {
+        threshold: 19_050,
+        slide_width: 9_144_000,
+        slide_height: 6_858_000,
+    };
 
     fn body(name: &str, font_size: Option<u32>, font_family: Option<&str>) -> SlideElement {
         body_with(name, font_size, font_family, None, vec![])
@@ -536,7 +555,7 @@ mod tests {
             slide(0, vec![body("B1", Some(2_400), None)]),
             slide(1, vec![body("B1", Some(2_400), None)]),
         ];
-        assert!(BodyFontSizeRule.check(&slides, T).is_empty());
+        assert!(BodyFontSizeRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -546,7 +565,7 @@ mod tests {
             slide(1, vec![body("B1", Some(2_400), None)]),
             slide(2, vec![body("B1", Some(3_200), None)]), // outlier
         ];
-        let v = BodyFontSizeRule.check(&slides, T);
+        let v = BodyFontSizeRule.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].slide, Some(3));
         assert!(matches!(
@@ -565,7 +584,7 @@ mod tests {
             slide(0, vec![body("B1", None, None)]),
             slide(1, vec![body("B1", None, None)]),
         ];
-        assert!(BodyFontSizeRule.check(&slides, T).is_empty());
+        assert!(BodyFontSizeRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -576,7 +595,7 @@ mod tests {
             slide(0, vec![e.clone(), body("B1", Some(2_400), None)]),
             slide(1, vec![e.clone(), body("B1", Some(2_400), None)]),
         ];
-        assert!(BodyFontSizeRule.check(&slides, T).is_empty());
+        assert!(BodyFontSizeRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -585,7 +604,7 @@ mod tests {
             slide(0, vec![body("B1", None, Some("Calibri"))]),
             slide(1, vec![body("B1", None, Some("Calibri"))]),
         ];
-        assert!(BodyFontFamilyRule.check(&slides, T).is_empty());
+        assert!(BodyFontFamilyRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -595,7 +614,7 @@ mod tests {
             slide(1, vec![body("B1", None, Some("Calibri"))]),
             slide(2, vec![body("B1", None, Some("Arial"))]), // outlier
         ];
-        let v = BodyFontFamilyRule.check(&slides, T);
+        let v = BodyFontFamilyRule.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(matches!(
             &v[0].message,
@@ -611,7 +630,7 @@ mod tests {
             slide(0, vec![body("B1", None, None)]),
             slide(1, vec![body("B1", None, None)]),
         ];
-        assert!(BodyFontFamilyRule.check(&slides, T).is_empty());
+        assert!(BodyFontFamilyRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -620,7 +639,7 @@ mod tests {
             slide(0, vec![body_with("B1", None, None, Some("000000"), vec![])]),
             slide(1, vec![body_with("B1", None, None, Some("000000"), vec![])]),
         ];
-        assert!(BodyTextColorRule.check(&slides, T).is_empty());
+        assert!(BodyTextColorRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -630,7 +649,7 @@ mod tests {
             slide(1, vec![body_with("B1", None, None, Some("000000"), vec![])]),
             slide(2, vec![body_with("B1", None, None, Some("FF0000"), vec![])]),
         ];
-        let v = BodyTextColorRule.check(&slides, T);
+        let v = BodyTextColorRule.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(matches!(
             &v[0].message,
@@ -651,7 +670,7 @@ mod tests {
                 vec!["No double spaces here"],
             )],
         )];
-        assert!(DoubleSpaceRule.check(&slides, T).is_empty());
+        assert!(DoubleSpaceRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -660,39 +679,41 @@ mod tests {
             0,
             vec![body_with("B1", None, None, None, vec!["Two  spaces"])],
         )];
-        let v = DoubleSpaceRule.check(&slides, T);
+        let v = DoubleSpaceRule.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(matches!(v[0].message, ViolationMessage::DoubleSpace));
         assert!(matches!(v[0].fix, Some(Fix::NormalizeWhitespace { .. })));
     }
 
     #[test]
-    fn trailing_space_clean() {
+    fn leading_space_clean() {
         let slides = vec![slide(
             0,
             vec![body_with("B1", None, None, None, vec!["Clean text"])],
         )];
-        assert!(TrailingSpaceRule.check(&slides, T).is_empty());
+        assert!(LeadingSpaceRule.check(&slides, &T).is_empty());
     }
 
     #[test]
-    fn trailing_space_fires_on_trailing() {
+    fn leading_space_ignores_trailing_space() {
+        // Trailing whitespace is invisible on a slide, so it is not flagged.
         let slides = vec![slide(
             0,
             vec![body_with("B1", None, None, None, vec!["trailing space "])],
         )];
-        let v = TrailingSpaceRule.check(&slides, T);
-        assert_eq!(v.len(), 1);
-        assert!(matches!(v[0].message, ViolationMessage::TrailingSpace));
+        assert!(LeadingSpaceRule.check(&slides, &T).is_empty());
     }
 
     #[test]
-    fn trailing_space_fires_on_leading() {
+    fn leading_space_fires_on_leading() {
         let slides = vec![slide(
             0,
             vec![body_with("B1", None, None, None, vec![" leading space"])],
         )];
-        assert_eq!(TrailingSpaceRule.check(&slides, T).len(), 1);
+        let v = LeadingSpaceRule.check(&slides, &T);
+        assert_eq!(v.len(), 1);
+        assert!(matches!(v[0].message, ViolationMessage::LeadingSpace));
+        assert!(matches!(v[0].fix, Some(Fix::NormalizeWhitespace { .. })));
     }
 
     #[test]
@@ -704,7 +725,7 @@ mod tests {
             ),
             slide(1, vec![body_with("B1", None, None, None, vec!["Third"])]),
         ];
-        assert!(BulletCapitalizationRule.check(&slides, T).is_empty());
+        assert!(BulletCapitalizationRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -720,7 +741,7 @@ mod tests {
                 vec![body_with("B1", None, None, None, vec!["lowercase outlier"])],
             ),
         ];
-        let v = BulletCapitalizationRule.check(&slides, T);
+        let v = BulletCapitalizationRule.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(matches!(
             v[0].message,
@@ -748,7 +769,7 @@ mod tests {
             slide(1, vec![body_with("B1", None, None, None, vec!["3. Third"])]),
         ];
         // First alpha in "1. First" is 'F' (uppercase) - should be clean.
-        assert!(BulletCapitalizationRule.check(&slides, T).is_empty());
+        assert!(BulletCapitalizationRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -757,7 +778,7 @@ mod tests {
             0,
             vec![body_with("B1", None, None, None, vec!["Normal text here"])],
         )];
-        assert!(AllCapsRule.check(&slides, T).is_empty());
+        assert!(AllCapsRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -766,7 +787,7 @@ mod tests {
             0,
             vec![body_with("B1", None, None, None, vec!["SHOUTING TEXT"])],
         )];
-        let v = AllCapsRule.check(&slides, T);
+        let v = AllCapsRule.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(matches!(v[0].message, ViolationMessage::AllCaps));
         assert!(v[0].fix.is_none());
@@ -779,7 +800,7 @@ mod tests {
             0,
             vec![body_with("B1", None, None, None, vec!["123 !@#"])],
         )];
-        assert!(AllCapsRule.check(&slides, T).is_empty());
+        assert!(AllCapsRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -800,7 +821,7 @@ mod tests {
                 vec![body_with("B1", None, None, None, vec!["Point three."])],
             ),
         ];
-        assert!(BulletPunctuationRule.check(&slides, T).is_empty());
+        assert!(BulletPunctuationRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -821,7 +842,7 @@ mod tests {
                 vec![body_with("B2", None, None, None, vec!["No punct here"])],
             ),
         ];
-        let v = BulletPunctuationRule.check(&slides, T);
+        let v = BulletPunctuationRule.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(matches!(
             v[0].message,
@@ -849,7 +870,7 @@ mod tests {
                 vec![body_with("B2", None, None, None, vec!["Has punct."])],
             ),
         ];
-        let v = BulletPunctuationRule.check(&slides, T);
+        let v = BulletPunctuationRule.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(matches!(
             v[0].message,
@@ -871,7 +892,7 @@ mod tests {
                 vec!["Short bullet point"],
             )],
         )];
-        assert!(BulletLengthRule { limit: 20 }.check(&slides, T).is_empty());
+        assert!(BulletLengthRule { limit: 20 }.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -881,7 +902,7 @@ mod tests {
             0,
             vec![body_with("B1", None, None, None, vec![long.as_str()])],
         )];
-        let v = BulletLengthRule { limit: 20 }.check(&slides, T);
+        let v = BulletLengthRule { limit: 20 }.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(matches!(
             v[0].message,
@@ -907,7 +928,7 @@ mod tests {
             )],
         )];
         // Two long paragraphs in one element → still one violation (break after first).
-        assert_eq!(BulletLengthRule { limit: 20 }.check(&slides, T).len(), 1);
+        assert_eq!(BulletLengthRule { limit: 20 }.check(&slides, &T).len(), 1);
     }
 
     #[test]
@@ -922,7 +943,7 @@ mod tests {
                 vec!["The quick brown fox"],
             )],
         )];
-        assert!(RepeatedWordRule.check(&slides, T).is_empty());
+        assert!(RepeatedWordRule.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -931,7 +952,7 @@ mod tests {
             0,
             vec![body_with("B1", None, None, None, vec!["the the quick fox"])],
         )];
-        let v = RepeatedWordRule.check(&slides, T);
+        let v = RepeatedWordRule.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(matches!(
             &v[0].message,
@@ -945,7 +966,7 @@ mod tests {
             0,
             vec![body_with("B1", None, None, None, vec!["The the quick fox"])],
         )];
-        assert_eq!(RepeatedWordRule.check(&slides, T).len(), 1);
+        assert_eq!(RepeatedWordRule.check(&slides, &T).len(), 1);
     }
 
     #[test]
@@ -960,7 +981,7 @@ mod tests {
                 vec!["word, word more text"],
             )],
         )];
-        assert_eq!(RepeatedWordRule.check(&slides, T).len(), 1);
+        assert_eq!(RepeatedWordRule.check(&slides, &T).len(), 1);
     }
 
     #[test]
@@ -969,7 +990,7 @@ mod tests {
             slide(0, vec![body("B1", None, Some("Calibri"))]),
             slide(1, vec![body("B1", None, Some("Arial"))]),
         ];
-        assert!(FontVarietyRule { limit: 2 }.check(&slides, T).is_empty());
+        assert!(FontVarietyRule { limit: 2 }.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -979,7 +1000,7 @@ mod tests {
             slide(1, vec![body("B1", None, Some("Arial"))]),
             slide(2, vec![body("B1", None, Some("Times New Roman"))]),
         ];
-        let v = FontVarietyRule { limit: 2 }.check(&slides, T);
+        let v = FontVarietyRule { limit: 2 }.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(v[0].slide.is_none());
         assert!(matches!(
@@ -995,7 +1016,7 @@ mod tests {
             slide(1, vec![body("B1", None, None)]),
             slide(2, vec![body("B1", None, None)]),
         ];
-        assert!(FontVarietyRule { limit: 2 }.check(&slides, T).is_empty());
+        assert!(FontVarietyRule { limit: 2 }.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -1005,7 +1026,7 @@ mod tests {
             slide(1, vec![body_with("B1", None, None, Some("FF0000"), vec![])]),
             slide(2, vec![body_with("B1", None, None, Some("0000FF"), vec![])]),
         ];
-        assert!(ColorVarietyRule { limit: 3 }.check(&slides, T).is_empty());
+        assert!(ColorVarietyRule { limit: 3 }.check(&slides, &T).is_empty());
     }
 
     #[test]
@@ -1016,7 +1037,7 @@ mod tests {
             slide(2, vec![body_with("B1", None, None, Some("0000FF"), vec![])]),
             slide(3, vec![body_with("B1", None, None, Some("00FF00"), vec![])]),
         ];
-        let v = ColorVarietyRule { limit: 3 }.check(&slides, T);
+        let v = ColorVarietyRule { limit: 3 }.check(&slides, &T);
         assert_eq!(v.len(), 1);
         assert!(v[0].slide.is_none());
         assert!(matches!(

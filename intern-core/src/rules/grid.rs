@@ -1,6 +1,6 @@
 use crate::detector::{SlideLayout, detect};
 use crate::model::{SlideData, SlideElement};
-use crate::rules::{Fix, Rule, Severity, Violation, ViolationMessage};
+use crate::rules::{Fix, Rule, RuleContext, Severity, Violation, ViolationMessage};
 
 pub struct GridHSpacingRule;
 pub struct GridVSpacingRule;
@@ -32,10 +32,12 @@ impl Rule for GridHSpacingRule {
         "GRID_H_SPACING"
     }
 
-    fn check(&self, slides: &[SlideData], threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], ctx: &RuleContext) -> Vec<Violation> {
+        let threshold = ctx.threshold;
         let mut violations = Vec::new();
         for slide in slides {
-            let SlideLayout::Grid { rows, .. } = detect(slide) else {
+            let SlideLayout::Grid { rows, .. } = detect(slide, ctx.slide_width, ctx.slide_height)
+            else {
                 continue;
             };
 
@@ -89,10 +91,12 @@ impl Rule for GridVSpacingRule {
         "GRID_V_SPACING"
     }
 
-    fn check(&self, slides: &[SlideData], threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], ctx: &RuleContext) -> Vec<Violation> {
+        let threshold = ctx.threshold;
         let mut violations = Vec::new();
         for slide in slides {
-            let SlideLayout::Grid { cols, .. } = detect(slide) else {
+            let SlideLayout::Grid { cols, .. } = detect(slide, ctx.slide_width, ctx.slide_height)
+            else {
                 continue;
             };
 
@@ -144,10 +148,12 @@ impl Rule for GridRowTopRule {
         "GRID_ROW_TOP"
     }
 
-    fn check(&self, slides: &[SlideData], threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], ctx: &RuleContext) -> Vec<Violation> {
+        let threshold = ctx.threshold;
         let mut violations = Vec::new();
         for slide in slides {
-            let SlideLayout::Grid { rows, .. } = detect(slide) else {
+            let SlideLayout::Grid { rows, .. } = detect(slide, ctx.slide_width, ctx.slide_height)
+            else {
                 continue;
             };
             for row in &rows {
@@ -184,10 +190,12 @@ impl Rule for GridColLeftRule {
         "GRID_COL_LEFT"
     }
 
-    fn check(&self, slides: &[SlideData], threshold: i64) -> Vec<Violation> {
+    fn check(&self, slides: &[SlideData], ctx: &RuleContext) -> Vec<Violation> {
+        let threshold = ctx.threshold;
         let mut violations = Vec::new();
         for slide in slides {
-            let SlideLayout::Grid { cols, .. } = detect(slide) else {
+            let SlideLayout::Grid { cols, .. } = detect(slide, ctx.slide_width, ctx.slide_height)
+            else {
                 continue;
             };
             for col in &cols {
@@ -224,7 +232,11 @@ mod tests {
     use super::*;
     use crate::model::{ElementKind, Rect, SlideData, SlideElement};
 
-    const THRESHOLD: i64 = 19_050; // 2px
+    const THRESHOLD: RuleContext = RuleContext {
+        threshold: 19_050, // 2px
+        slide_width: 9_144_000,
+        slide_height: 6_858_000,
+    };
 
     fn img(name: &str, x: i64, y: i64) -> SlideElement {
         SlideElement {
@@ -262,7 +274,7 @@ mod tests {
     #[test]
     fn grid_h_spacing_clean() {
         let s = grid_with_skew(200_000, 0);
-        assert!(GridHSpacingRule.check(&[s], THRESHOLD).is_empty());
+        assert!(GridHSpacingRule.check(&[s], &THRESHOLD).is_empty());
     }
 
     #[test]
@@ -283,7 +295,7 @@ mod tests {
                 ), // gap=200k
             ],
         };
-        let v = GridHSpacingRule.check(&[s], THRESHOLD);
+        let v = GridHSpacingRule.check(&[s], &THRESHOLD);
         assert!(
             !v.is_empty(),
             "expected GRID_H_SPACING violation from cross-row gap mismatch"
@@ -294,7 +306,7 @@ mod tests {
     fn grid_row_top_fires_on_vertical_shift() {
         let skew = 50_000i64; // ~5px
         let s = grid_with_skew(200_000, skew);
-        let v = GridRowTopRule.check(&[s], THRESHOLD);
+        let v = GridRowTopRule.check(&[s], &THRESHOLD);
         assert!(
             !v.is_empty(),
             "expected GRID_ROW_TOP violation for skewed top-right"
@@ -304,14 +316,14 @@ mod tests {
     #[test]
     fn grid_row_top_clean() {
         let s = grid_with_skew(200_000, 0);
-        assert!(GridRowTopRule.check(&[s], THRESHOLD).is_empty());
+        assert!(GridRowTopRule.check(&[s], &THRESHOLD).is_empty());
     }
 
     #[test]
     fn grid_row_top_fix_snaps_to_expected_y() {
         let skew = 50_000i64;
         let s = grid_with_skew(200_000, skew);
-        let v = GridRowTopRule.check(&[s], THRESHOLD);
+        let v = GridRowTopRule.check(&[s], &THRESHOLD);
         assert!(!v.is_empty());
         let fix = v[0].fix.as_ref().unwrap();
         // Row 0 has TL at 1_500_000 and TR at 1_550_000; median (index 1) = 1_550_000.
@@ -322,7 +334,7 @@ mod tests {
     #[test]
     fn grid_v_spacing_clean() {
         let s = grid_with_skew(200_000, 0);
-        assert!(GridVSpacingRule.check(&[s], THRESHOLD).is_empty());
+        assert!(GridVSpacingRule.check(&[s], &THRESHOLD).is_empty());
     }
 
     #[test]
@@ -339,7 +351,7 @@ mod tests {
                 img("BR", 500_000 + w + col_gap, 1_500_000 + h + 400_000), // gap=400k
             ],
         };
-        let v = GridVSpacingRule.check(&[s], THRESHOLD);
+        let v = GridVSpacingRule.check(&[s], &THRESHOLD);
         assert!(!v.is_empty(), "expected GRID_V_SPACING violation");
     }
 
@@ -357,7 +369,7 @@ mod tests {
                 img("BR", 500_000 + w + gap, 1_500_000 + h + gap),
             ],
         };
-        let v = GridColLeftRule.check(&[s], THRESHOLD);
+        let v = GridColLeftRule.check(&[s], &THRESHOLD);
         assert!(!v.is_empty(), "expected GRID_COL_LEFT violation");
         let fix = v[0].fix.as_ref().unwrap();
         // Median of col 0 xs: [500_000, 550_000], index 1 = 550_000.
@@ -367,6 +379,6 @@ mod tests {
     #[test]
     fn grid_col_left_clean() {
         let s = grid_with_skew(200_000, 0);
-        assert!(GridColLeftRule.check(&[s], THRESHOLD).is_empty());
+        assert!(GridColLeftRule.check(&[s], &THRESHOLD).is_empty());
     }
 }

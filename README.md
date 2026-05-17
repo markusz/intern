@@ -28,7 +28,7 @@ $ intern check quarterly.pptx
   5      ELEMENT_OVERFLOW      Shape 3  element extends outside slide bounds
   6      DOUBLE_SPACE          Body     paragraph contains double spaces
   7      DUPLICATE_TITLE       Title 7  same title as slide 2
-  9      IMAGE_ASPECT_RATIO    Image 2  image aspect ratio 1.33 differs from majority 1.78
+  9      TEXT_ELEMENT_OVERLAP  Text 4   bounding box overlaps with 'Text 5'
 
 7 violation(s) (7 error, 0 warning)
 ```
@@ -119,7 +119,7 @@ override individual settings on top of it.
 ```toml
 threshold_px = 2
 
-disable = ["IMAGE_ASPECT_RATIO"]        # turn rules off in bulk
+disable = ["ALL_CAPS"]                  # turn rules off in bulk
 # only  = ["TITLE_Y", "TITLE_X_WIDTH"]  # if set, ONLY these rules run
 
 [output]
@@ -157,10 +157,11 @@ median title position) either.
 
 ## Rules
 
-31 rules across four categories. They all run by default **except `SLIDE_COUNT`**,
-whose slide limit is too deck-specific for a blanket check - opt into it with
-`enabled = true` under `[rules.SLIDE_COUNT]`. Any rule can be turned off with
-`--disable`.
+30 rules across four categories. Most run by default. Off by default and opted
+into with `enabled = true` under `[rules.<RULE_ID>]`: `SLIDE_COUNT` (slide limit
+too deck-specific), `TITLE_PRESENT`, `BODY_TEXT_COLOR`, `BODY_FONT_SIZE`, and the
+`GRID_*` and `COLUMN_*` rules (unreliable layout detector). Any rule can be turned
+off with `--disable`.
 
 ### Alignment
 
@@ -175,7 +176,7 @@ whose slide limit is too deck-specific for a blanket check - opt into it with
 | `GRID_V_SPACING` | Vertical gaps between grid elements are uneven | 2 px |
 | `GRID_ROW_TOP` | Elements in the same grid row have misaligned top edges | 2 px |
 | `GRID_COL_LEFT` | Elements in the same grid column have misaligned left edges | 2 px |
-| `ELEMENT_OVERLAP` | Two elements on the same slide have overlapping rects | - |
+| `TEXT_ELEMENT_OVERLAP` | Two text-bearing elements on the same slide have overlapping rects | - |
 | `ELEMENT_OVERFLOW` | Element extends outside the slide bounds | - |
 
 ### Typography
@@ -186,16 +187,15 @@ whose slide limit is too deck-specific for a blanket check - opt into it with
 | `BODY_FONT_SIZE` | Body font size differs from the majority across slides | - |
 | `BODY_FONT_FAMILY` | Body font family differs from the majority across slides | - |
 | `BODY_TEXT_COLOR` | Body text color differs from the majority across slides | - |
-| `FONT_VARIETY` | Too many distinct font families across the deck | 2 families |
-| `COLOR_VARIETY` | Too many distinct text colors across the deck | 3 colors |
-| `IMAGE_ASPECT_RATIO` | Image aspect ratio differs from the deck majority | 5% |
+| `FONT_VARIETY` | Too many distinct font families across the deck | 4 families |
+| `COLOR_VARIETY` | Too many distinct text colors across the deck | 6 colors |
 
 ### Text quality
 
 | Rule | What it catches | Default |
 |---|---|---|
 | `DOUBLE_SPACE` | Paragraph contains two or more consecutive spaces | - |
-| `TRAILING_SPACE` | Paragraph has leading or trailing whitespace | - |
+| `LEADING_SPACE` | Paragraph starts with whitespace | - |
 | `ALL_CAPS` | Paragraph text is ALL CAPS | - |
 | `REPEATED_WORD` | Two consecutive identical words ("the the") | - |
 | `BULLET_CAPITALIZATION` | Bullets have inconsistent first-letter capitalization | - |

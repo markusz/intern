@@ -1,19 +1,22 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ppt_rs::opc::Package;
 use ppt_rs::oxml::slide::TextRun;
 use ppt_rs::oxml::{SlideParser, XmlParser};
 
 use crate::error::Error;
-use crate::model::{ElementKind, Rect, SlideData, SlideElement};
+use crate::model::{
+    DEFAULT_SLIDE_HEIGHT_EMU, DEFAULT_SLIDE_WIDTH_EMU, ElementKind, Presentation, Rect, SlideData,
+    SlideElement,
+};
 
-pub fn read_presentation(path: &str) -> Result<Vec<SlideData>, Error> {
+pub fn read_presentation(path: &str) -> Result<Presentation, Error> {
     let pkg = Package::open(path).map_err(|e| Error::Open {
         path: path.to_string(),
         message: e.to_string(),
     })?;
     let paths = slide_order(&pkg);
-    paths
+    let slides = paths
         .iter()
         .enumerate()
         .map(|(idx, slide_path)| {
@@ -22,12 +25,36 @@ pub fn read_presentation(path: &str) -> Result<Vec<SlideData>, Error> {
                 .ok_or_else(|| Error::SlideMissing(slide_path.clone()))?;
             parse_slide(idx, &xml)
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    let (slide_width, slide_height) = slide_size(&pkg);
+    Ok(Presentation {
+        slides,
+        slide_width,
+        slide_height,
+    })
+}
+
+// Reads the deck's slide dimensions from `<p:sldSz>` in presentation.xml, falling
+// back to the standard 16:9 widescreen size when the element is absent or invalid.
+fn slide_size(pkg: &Package) -> (i64, i64) {
+    pkg.get_part_string("ppt/presentation.xml")
+        .as_deref()
+        .and_then(parse_slide_size)
+        .unwrap_or((DEFAULT_SLIDE_WIDTH_EMU, DEFAULT_SLIDE_HEIGHT_EMU))
+}
+
+fn parse_slide_size(presentation_xml: &str) -> Option<(i64, i64)> {
+    let root = XmlParser::parse_str(presentation_xml).ok()?;
+    let sz = root.find_descendant("sldSz")?;
+    let cx: i64 = sz.attr("cx")?.parse().ok()?;
+    let cy: i64 = sz.attr("cy")?.parse().ok()?;
+    (cx > 0 && cy > 0).then_some((cx, cy))
 }
 
 fn parse_slide(index: usize, xml: &str) -> Result<SlideData, Error> {
     let parsed = SlideParser::parse(xml).map_err(|e| Error::ParseSlide(e.to_string()))?;
     let families = parse_font_families(xml);
+    let textboxes = textbox_names(xml);
     let mut elements: Vec<SlideElement> = parsed
         .shapes
         .into_iter()
@@ -37,8 +64,10 @@ fn parse_slide(index: usize, xml: &str) -> Result<SlideData, Error> {
                 ElementKind::Title
             } else if s.is_body {
                 ElementKind::Body
-            } else {
+            } else if textboxes.contains(&s.name) {
                 ElementKind::TextBox
+            } else {
+                ElementKind::Autoshape
             };
             let runs: Vec<_> = s.paragraphs.iter().flat_map(|p| p.runs.iter()).collect();
             let font_size = runs.iter().find_map(|r| r.font_size);
@@ -106,6 +135,32 @@ fn parse_font_families(xml: &str) -> HashMap<String, String> {
         .collect()
 }
 
+// Returns the names of every `<p:sp>` that is a genuine text box, i.e. carries
+// `txBox="1"` on its `<p:cNvSpPr>`. Shapes absent from this set are autoshapes.
+fn textbox_names(xml: &str) -> HashSet<String> {
+    let Ok(root) = XmlParser::parse_str(xml) else {
+        return HashSet::new();
+    };
+    let Some(sp_tree) = root.find_descendant("spTree") else {
+        return HashSet::new();
+    };
+    sp_tree
+        .find_all_descendants("sp")
+        .into_iter()
+        .filter_map(|sp| {
+            let name = sp.find_descendant("cNvPr")?.attr("name")?.to_string();
+            let is_textbox = sp
+                .find_descendant("cNvSpPr")
+                .and_then(|e| e.attr("txBox"))
+                .is_some_and(|v| v == "1");
+            is_textbox.then_some(name)
+        })
+        .collect()
+}
+
+// Parses top-level `<p:pic>` images. Pictures nested inside a `<p:grpSp>` are
+// skipped: their `<a:off>` is in the group's child coordinate space and `intern`
+// does not yet apply group transforms, so their slide position is unknown.
 fn parse_images(xml: &str) -> Vec<SlideElement> {
     let Ok(root) = XmlParser::parse_str(xml) else {
         return vec![];
@@ -115,7 +170,7 @@ fn parse_images(xml: &str) -> Vec<SlideElement> {
     };
 
     sp_tree
-        .find_all_descendants("pic")
+        .find_all("pic")
         .into_iter()
         .filter_map(|pic| {
             let name = pic
@@ -527,6 +582,23 @@ mod tests {
     }
 
     #[test]
+    fn parse_images_skips_pictures_inside_groups() {
+        // A picture nested in a group carries child-space coordinates; until group
+        // transforms are applied it must not be read as a slide-level image.
+        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:grpSp>
+                    <p:pic>
+                        <p:nvPicPr><p:cNvPr name="Nested"/></p:nvPicPr>
+                        <p:spPr><a:xfrm><a:off x="1" y="2"/><a:ext cx="3" cy="4"/></a:xfrm></p:spPr>
+                    </p:pic>
+                </p:grpSp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        assert!(parse_images(xml).is_empty());
+    }
+
+    #[test]
     fn parse_font_families_skips_theme_references() {
         // The first run uses a theme reference ("+mn-lt"); only the explicit
         // typeface should be reported.
@@ -543,6 +615,38 @@ mod tests {
         </p:sld>"#;
         let fams = parse_font_families(xml);
         assert_eq!(fams.get("Body 1").map(String::as_str), Some("Calibri"));
+    }
+
+    #[test]
+    fn textbox_names_distinguishes_text_boxes_from_autoshapes() {
+        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:sp>
+                    <p:nvSpPr><p:cNvPr name="Real Text Box"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
+                </p:sp>
+                <p:sp>
+                    <p:nvSpPr><p:cNvPr name="Rectangle 3"/><p:cNvSpPr/></p:nvSpPr>
+                </p:sp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let names = textbox_names(xml);
+        assert!(names.contains("Real Text Box"));
+        assert!(!names.contains("Rectangle 3"));
+    }
+
+    #[test]
+    fn parse_slide_size_reads_sldsz_dimensions() {
+        let xml = r#"<p:presentation xmlns:p="p">
+            <p:sldSz cx="12192000" cy="6858000" type="screen16x9"/>
+        </p:presentation>"#;
+        assert_eq!(parse_slide_size(xml), Some((12_192_000, 6_858_000)));
+    }
+
+    #[test]
+    fn parse_slide_size_none_when_missing_or_invalid() {
+        assert_eq!(parse_slide_size(r#"<p:presentation xmlns:p="p"/>"#), None);
+        let zero = r#"<p:presentation xmlns:p="p"><p:sldSz cx="0" cy="0"/></p:presentation>"#;
+        assert_eq!(parse_slide_size(zero), None);
     }
 
     #[test]

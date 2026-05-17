@@ -1,5 +1,7 @@
-pub const SLIDE_WIDTH_EMU: i64 = 9_144_000;
-pub const SLIDE_HEIGHT_EMU: i64 = 6_858_000;
+/// Default slide dimensions (standard 16:9 widescreen), used when a deck's
+/// `<p:sldSz>` element is missing or unreadable.
+pub const DEFAULT_SLIDE_WIDTH_EMU: i64 = 12_192_000;
+pub const DEFAULT_SLIDE_HEIGHT_EMU: i64 = 6_858_000;
 pub const EMU_PER_PX: i64 = 9_525; // 96 DPI
 
 #[derive(Debug, Clone, Copy)]
@@ -26,7 +28,10 @@ impl Rect {
 pub enum ElementKind {
     Title,
     Body,
+    /// A genuine text box: a `<p:sp>` with `txBox="1"` on its `<p:cNvSpPr>`.
     TextBox,
+    /// A non-text-box autoshape (rectangle, callout, ...); may still carry text.
+    Autoshape,
     Image,
 }
 
@@ -49,4 +54,13 @@ pub struct SlideElement {
 pub struct SlideData {
     pub index: usize, // 0-based
     pub elements: Vec<SlideElement>,
+}
+
+/// A parsed presentation: its slides plus the deck's actual slide dimensions
+/// (read from `<p:sldSz>`).
+#[derive(Debug, Clone)]
+pub struct Presentation {
+    pub slides: Vec<SlideData>,
+    pub slide_width: i64,
+    pub slide_height: i64,
 }

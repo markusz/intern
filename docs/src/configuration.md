@@ -22,7 +22,7 @@ auto-discovered files are used only when present.
 ```toml
 threshold_px = 2                        # global alignment tolerance
 
-disable = ["IMAGE_ASPECT_RATIO"]        # turn rules off in bulk
+disable = ["ALL_CAPS"]                  # turn rules off in bulk
 # only  = ["TITLE_Y", "TITLE_X_WIDTH"]  # if set, ONLY these rules run
 
 [output]

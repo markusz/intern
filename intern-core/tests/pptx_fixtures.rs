@@ -3,8 +3,9 @@
 //! Each test builds a presentation with known geometry, runs the reader,
 //! and then asserts on what violations (or lack thereof) the rules produce.
 
+use intern_core::model::Presentation;
 use intern_core::reader::read_presentation;
-use intern_core::rules::{Fix, Limits, all_rules};
+use intern_core::rules::{Fix, Limits, RuleContext, all_rules};
 use intern_core::writer::apply_fixes;
 use ppt_rs::generator::{Shape, ShapeType, SlideContent};
 use ppt_rs::generator::{SlideLayout, create_pptx_with_content};
@@ -22,11 +23,20 @@ fn cleanup(path: &str) {
     std::fs::remove_file(format!("{path}.bak")).ok();
 }
 
+fn ctx_for(pres: &Presentation) -> RuleContext {
+    RuleContext {
+        threshold: THRESHOLD,
+        slide_width: pres.slide_width,
+        slide_height: pres.slide_height,
+    }
+}
+
 fn fixes_for(path: &str) -> Vec<Fix> {
-    let slides = read_presentation(path).expect("read pptx");
+    let pres = read_presentation(path).expect("read pptx");
+    let ctx = ctx_for(&pres);
     all_rules(&Limits::default())
         .iter()
-        .flat_map(|r| r.check(&slides, THRESHOLD))
+        .flat_map(|r| r.check(&pres.slides, &ctx))
         .filter_map(|v| v.fix)
         .collect()
 }
@@ -36,19 +46,21 @@ fn shape_at(name: &str, x: u32, y: u32, w: u32, h: u32) -> Shape {
 }
 
 fn violations_for(path: &str, rule_id: &str) -> Vec<intern_core::rules::Violation> {
-    let slides = read_presentation(path).expect("read pptx");
+    let pres = read_presentation(path).expect("read pptx");
+    let ctx = ctx_for(&pres);
     all_rules(&Limits::default())
         .iter()
         .filter(|r| r.id() == rule_id)
-        .flat_map(|r| r.check(&slides, THRESHOLD))
+        .flat_map(|r| r.check(&pres.slides, &ctx))
         .collect()
 }
 
 fn all_violations(path: &str) -> Vec<intern_core::rules::Violation> {
-    let slides = read_presentation(path).expect("read pptx");
+    let pres = read_presentation(path).expect("read pptx");
+    let ctx = ctx_for(&pres);
     all_rules(&Limits::default())
         .iter()
-        .flat_map(|r| r.check(&slides, THRESHOLD))
+        .flat_map(|r| r.check(&pres.slides, &ctx))
         .collect()
 }
 
@@ -63,10 +75,10 @@ fn reader_parses_shapes_with_correct_positions() {
     let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
     let path = write_tmp(&bytes, "reader_positions");
 
-    let slides = read_presentation(&path).unwrap();
+    let pres = read_presentation(&path).unwrap();
     cleanup(&path);
 
-    let found = slides[0]
+    let found = pres.slides[0]
         .elements
         .iter()
         .find(|e| e.rect.w == w as i64 && e.rect.h == h as i64);
@@ -86,9 +98,9 @@ fn reader_returns_correct_slide_count() {
     let bytes =
         create_pptx_with_content("Fixture", vec![make("One"), make("Two"), make("Three")]).unwrap();
     let path = write_tmp(&bytes, "slide_count");
-    let slides = read_presentation(&path).unwrap();
+    let pres = read_presentation(&path).unwrap();
     cleanup(&path);
-    assert_eq!(slides.len(), 3);
+    assert_eq!(pres.slides.len(), 3);
 }
 
 // Image XML parsing itself is covered by unit tests in reader.rs; this only
@@ -336,7 +348,7 @@ fn element_overflow_detected() {
 }
 
 #[test]
-fn element_overlap_detected() {
+fn text_element_overlap_detected() {
     let slide = SlideContent::new("overlap").with_shapes(vec![
         shape_at("A", 1_000_000, 3_000_000, 2_000_000, 2_000_000),
         shape_at("B", 2_000_000, 4_000_000, 2_000_000, 2_000_000),
@@ -344,11 +356,11 @@ fn element_overlap_detected() {
     let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
     let path = write_tmp(&bytes, "overlap");
 
-    let v = violations_for(&path, "ELEMENT_OVERLAP");
+    let v = violations_for(&path, "TEXT_ELEMENT_OVERLAP");
     cleanup(&path);
     assert!(
         !v.is_empty(),
-        "expected ELEMENT_OVERLAP for two intersecting shapes"
+        "expected TEXT_ELEMENT_OVERLAP for two intersecting text shapes"
     );
 }
 

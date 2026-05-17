@@ -1,7 +1,7 @@
 use intern_core::{
     model::EMU_PER_PX,
     reader::read_presentation,
-    rules::{Limits, all_rules},
+    rules::{Limits, RuleContext, all_rules},
 };
 
 fn main() {
@@ -10,20 +10,24 @@ fn main() {
         std::process::exit(1);
     });
 
-    let slides = match read_presentation(&path) {
-        Ok(s) => s,
+    let pres = match read_presentation(&path) {
+        Ok(p) => p,
         Err(e) => {
             eprintln!("error: {e}");
             std::process::exit(1);
         }
     };
 
-    let threshold = 2 * EMU_PER_PX; // 2px
+    let ctx = RuleContext {
+        threshold: 2 * EMU_PER_PX, // 2px
+        slide_width: pres.slide_width,
+        slide_height: pres.slide_height,
+    };
     let rules = all_rules(&Limits::default());
 
     let violations: Vec<_> = rules
         .iter()
-        .flat_map(|r| r.check(&slides, threshold))
+        .flat_map(|r| r.check(&pres.slides, &ctx))
         .collect();
 
     if violations.is_empty() {

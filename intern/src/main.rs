@@ -35,7 +35,7 @@ fn run_check(args: CheckArgs, cfg: Config) -> miette::Result<()> {
     }
 
     let files = input::collect_pptx(&args.files)?;
-    let mut results: Vec<(String, Vec<rules::Violation>)> = Vec::new();
+    let mut results: Vec<(String, Vec<analyze::Finding>)> = Vec::new();
     for file in &files {
         let path = file
             .to_str()
