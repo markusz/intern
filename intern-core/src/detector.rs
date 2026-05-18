@@ -171,6 +171,7 @@ mod tests {
 
     fn el(kind: ElementKind, x: i64, y: i64, w: i64, h: i64) -> SlideElement {
         SlideElement {
+            id: 1,
             name: "e".into(),
             kind,
             rect: Rect { x, y, w, h },

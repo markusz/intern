@@ -35,8 +35,39 @@ pub enum ElementKind {
     Image,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParagraphKind {
+    /// Paragraph carries bullet formatting - either explicitly via `<a:buChar>` /
+    /// `<a:buAutoNum>`, or by inheriting from a Body placeholder's layout default.
+    Bullet,
+    /// Paragraph has no bullet - either suppressed via `<a:buNone>`, or an
+    /// autoshape / text box paragraph with no explicit bullet marker.
+    Plain,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Paragraph {
+    pub text: String,
+    pub kind: ParagraphKind,
+}
+
+impl std::fmt::Display for ElementKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Title => "Title",
+            Self::Body => "Body",
+            Self::TextBox => "TextBox",
+            Self::Autoshape => "Autoshape",
+            Self::Image => "Image",
+        };
+        write!(f, "{s}")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SlideElement {
+    /// Per-slide shape id from `<p:cNvPr id="...">`. Unique within a slide.
+    pub id: u32,
     pub name: String,
     pub kind: ElementKind,
     pub rect: Rect,
@@ -46,8 +77,8 @@ pub struct SlideElement {
     pub font_family: Option<String>,
     /// Dominant text color as hex RGB (e.g. "FF0000"). None if not set or inherited.
     pub text_color: Option<String>,
-    /// Non-empty paragraph texts, in order.
-    pub paragraphs: Vec<String>,
+    /// Non-empty paragraphs, in document order.
+    pub paragraphs: Vec<Paragraph>,
 }
 
 #[derive(Debug, Clone)]

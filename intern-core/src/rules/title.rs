@@ -47,7 +47,7 @@ impl Rule for TitleYRule {
             .map(|(idx, e)| Violation {
                 rule_id: self.id(),
                 slide: Some(idx + 1),
-                element: Some(e.name.clone()),
+                element: Some(e.id),
                 message: ViolationMessage::TitleYOff {
                     actual_emu: e.rect.y,
                     expected_emu: expected,
@@ -93,7 +93,7 @@ impl Rule for TitleXWidthRule {
                 Some(Violation {
                     rule_id: self.id(),
                     slide: Some(idx + 1),
-                    element: Some(e.name.clone()),
+                    element: Some(e.id),
                     message: ViolationMessage::TitlePositionSize {
                         x_off_emu: (dx > threshold).then_some(dx),
                         w_off_emu: (dw > threshold).then_some(dw),
@@ -118,9 +118,9 @@ impl Rule for TitleFontSizeRule {
 
     fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let ts = titles(slides);
-        let sized: Vec<(usize, String, u32)> = ts
+        let sized: Vec<(usize, u32, String, u32)> = ts
             .iter()
-            .filter_map(|(idx, e)| e.font_size.map(|sz| (*idx, e.name.clone(), sz)))
+            .filter_map(|(idx, e)| e.font_size.map(|sz| (*idx, e.id, e.name.clone(), sz)))
             .collect();
 
         if sized.len() < 2 {
@@ -128,7 +128,7 @@ impl Rule for TitleFontSizeRule {
         }
 
         let mut counts: HashMap<u32, usize> = HashMap::new();
-        for (_, _, sz) in &sized {
+        for (_, _, _, sz) in &sized {
             *counts.entry(*sz).or_default() += 1;
         }
         // SAFETY: sized.len() >= 2 ensures counts is non-empty, so max_by_key returns Some.
@@ -140,11 +140,11 @@ impl Rule for TitleFontSizeRule {
 
         sized
             .iter()
-            .filter(|(_, _, sz)| *sz != expected)
-            .map(|(idx, name, sz)| Violation {
+            .filter(|(_, _, _, sz)| *sz != expected)
+            .map(|(idx, id, name, sz)| Violation {
                 rule_id: self.id(),
                 slide: Some(idx + 1),
-                element: Some(name.clone()),
+                element: Some(*id),
                 message: ViolationMessage::TitleFontSize {
                     actual: *sz,
                     expected,
@@ -161,7 +161,13 @@ impl Rule for TitleFontSizeRule {
 }
 
 fn title_text(e: &SlideElement) -> String {
-    e.paragraphs.join(" ").trim().to_string()
+    e.paragraphs
+        .iter()
+        .map(|p| p.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
 }
 
 impl Rule for DuplicateTitleRule {
@@ -186,7 +192,7 @@ impl Rule for DuplicateTitleRule {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(idx + 1),
-                        element: Some(e.name.clone()),
+                        element: Some(e.id),
                         message: ViolationMessage::DuplicateTitle {
                             first_slide: *o.get(),
                         },
@@ -214,7 +220,7 @@ impl Rule for TitleLengthRule {
                 (word_count > self.limit).then(|| Violation {
                     rule_id: self.id(),
                     slide: Some(idx + 1),
-                    element: Some(e.name.clone()),
+                    element: Some(e.id),
                     message: ViolationMessage::TitleTooLong {
                         word_count,
                         limit: self.limit,
@@ -241,7 +247,7 @@ impl Rule for TitleTrailingPunctRule {
                 matches!(last, '.' | '!' | '?').then(|| Violation {
                     rule_id: self.id(),
                     slide: Some(idx + 1),
-                    element: Some(e.name.clone()),
+                    element: Some(e.id),
                     message: ViolationMessage::TitleTrailingPunct { punct: last },
                     severity: Severity::Warning,
                     fix: None,
@@ -254,7 +260,7 @@ impl Rule for TitleTrailingPunctRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ElementKind, Rect, SlideData, SlideElement};
+    use crate::model::{ElementKind, Paragraph, ParagraphKind, Rect, SlideData, SlideElement};
     use crate::rules::ViolationMessage;
 
     const THRESHOLD: RuleContext = RuleContext {
@@ -271,6 +277,7 @@ mod tests {
         SlideData {
             index: slide_idx,
             elements: vec![SlideElement {
+                id: 1,
                 name: format!("Title {}", slide_idx + 1),
                 kind: ElementKind::Title,
                 rect: Rect {
@@ -285,7 +292,10 @@ mod tests {
                 paragraphs: if text.is_empty() {
                     vec![]
                 } else {
-                    vec![text.to_string()]
+                    vec![Paragraph {
+                        text: text.to_string(),
+                        kind: ParagraphKind::Plain,
+                    }]
                 },
             }],
         }
@@ -365,6 +375,7 @@ mod tests {
             SlideData {
                 index: 0,
                 elements: vec![SlideElement {
+                    id: 1,
                     name: "Title 1".into(),
                     kind: ElementKind::Title,
                     rect: Rect {
@@ -382,6 +393,7 @@ mod tests {
             SlideData {
                 index: 1,
                 elements: vec![SlideElement {
+                    id: 1,
                     name: "Title 2".into(),
                     kind: ElementKind::Title,
                     rect: Rect {

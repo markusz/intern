@@ -319,7 +319,7 @@ impl fmt::Display for ViolationMessage {
 pub struct Violation {
     pub rule_id: &'static str,
     pub slide: Option<usize>, // 1-based
-    pub element: Option<String>,
+    pub element: Option<u32>,
     pub message: ViolationMessage,
     pub severity: Severity,
     /// Proposed automatic fix, if one can be determined unambiguously.

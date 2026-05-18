@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
+// ppt-rs `Package` handles OPC/zip unpacking. Its `SlideParser` is excluded:
+// it uses a flat `find_all("sp")` that misses shapes inside `<p:grpSp>` groups
+// and applies no group-transform math, so grouped shapes get wrong coordinates.
 use ppt_rs::opc::Package;
 
 use crate::error::Error;
 use crate::model::{
-    DEFAULT_SLIDE_HEIGHT_EMU, DEFAULT_SLIDE_WIDTH_EMU, ElementKind, Presentation, Rect, SlideData,
-    SlideElement,
+    DEFAULT_SLIDE_HEIGHT_EMU, DEFAULT_SLIDE_WIDTH_EMU, ElementKind, Paragraph, ParagraphKind,
+    Presentation, Rect, SlideData, SlideElement,
 };
 use crate::xml;
 
@@ -58,35 +61,28 @@ fn parse_slide(index: usize, slide_xml: &str) -> Result<SlideData, Error> {
             elements: vec![],
         });
     };
-    let mut elements = Vec::new();
-    for child in &sp_tree.children {
-        match child.tag.as_str() {
-            "sp" => {
-                if let Some(el) = parse_sp(child) {
-                    elements.push(el);
-                }
-            }
-            "pic" => {
-                if let Some(el) = parse_pic(child) {
-                    elements.push(el);
-                }
-            }
-            // grpSp and other container types skipped until group support (phase 2).
-            _ => {}
-        }
-    }
-    Ok(SlideData { index, elements })
+    Ok(SlideData {
+        index,
+        elements: walk_shapes(sp_tree, &[]),
+    })
 }
 
 fn parse_sp(sp: &xml::Element) -> Option<SlideElement> {
-    let name = sp.find_descendant("cNvPr")?.attr("name")?.to_string();
+    let cnv_pr = sp.find_descendant("cNvPr")?;
+    let id: u32 = cnv_pr.attr("id").and_then(|s| s.parse().ok()).or_else(|| {
+        let name = cnv_pr.attr("name").unwrap_or("?");
+        eprintln!("intern: shape '{name}' has no cNvPr id - skipped");
+        None
+    })?;
+    let name = cnv_pr.attr("name").unwrap_or("").to_string();
     let rect = parse_rect(sp)?;
     if rect.w <= 0 || rect.h <= 0 {
         return None;
     }
     let kind = classify_sp(sp);
-    let (paragraphs, font_size, font_family, text_color) = parse_text_body(sp);
+    let (paragraphs, font_size, font_family, text_color) = parse_text_body(sp, &kind);
     Some(SlideElement {
+        id,
         name,
         kind,
         rect,
@@ -140,7 +136,8 @@ fn parse_rect(node: &xml::Element) -> Option<Rect> {
 
 fn parse_text_body(
     sp: &xml::Element,
-) -> (Vec<String>, Option<u32>, Option<String>, Option<String>) {
+    element_kind: &ElementKind,
+) -> (Vec<Paragraph>, Option<u32>, Option<String>, Option<String>) {
     let Some(tx_body) = sp.find("txBody") else {
         return (vec![], None, None, None);
     };
@@ -149,11 +146,18 @@ fn parse_text_body(
     let mut font_family: Option<String> = None;
     let mut color_counts: HashMap<String, usize> = HashMap::new();
 
+    // Body placeholders inherit bullet formatting from the slide layout; all other
+    // element kinds (TextBox, Autoshape) do not have bullets unless explicitly set.
+    let inherited_kind = match element_kind {
+        ElementKind::Body => ParagraphKind::Bullet,
+        _ => ParagraphKind::Plain,
+    };
+
     for para in tx_body.find_all("p") {
-        let para_text =
-            collect_para_text(para, &mut font_size, &mut font_family, &mut color_counts);
-        if !para_text.trim().is_empty() {
-            paragraphs.push(para_text);
+        let text = collect_para_text(para, &mut font_size, &mut font_family, &mut color_counts);
+        if !text.trim().is_empty() {
+            let kind = detect_bullet_kind(para, inherited_kind.clone());
+            paragraphs.push(Paragraph { text, kind });
         }
     }
 
@@ -162,6 +166,19 @@ fn parse_text_body(
         .max_by_key(|(_, n)| *n)
         .map(|(c, _)| c);
     (paragraphs, font_size, font_family, text_color)
+}
+
+fn detect_bullet_kind(para: &xml::Element, default: ParagraphKind) -> ParagraphKind {
+    let Some(ppr) = para.find("pPr") else {
+        return default;
+    };
+    if ppr.find("buChar").is_some() || ppr.find("buAutoNum").is_some() {
+        return ParagraphKind::Bullet;
+    }
+    if ppr.find("buNone").is_some() {
+        return ParagraphKind::Plain;
+    }
+    default
 }
 
 fn collect_para_text(
@@ -196,8 +213,16 @@ fn collect_para_text(
 }
 
 fn parse_pic(pic: &xml::Element) -> Option<SlideElement> {
-    let name = pic
-        .find_descendant("cNvPr")
+    let cnv_pr = pic.find_descendant("cNvPr");
+    let id: u32 = cnv_pr
+        .and_then(|e| e.attr("id"))
+        .and_then(|s| s.parse().ok())
+        .or_else(|| {
+            let name = cnv_pr.and_then(|e| e.attr("name")).unwrap_or("?");
+            eprintln!("intern: picture '{name}' has no cNvPr id - skipped");
+            None
+        })?;
+    let name = cnv_pr
         .and_then(|e| e.attr("name"))
         .unwrap_or("Picture")
         .to_string();
@@ -206,6 +231,7 @@ fn parse_pic(pic: &xml::Element) -> Option<SlideElement> {
         return None;
     }
     Some(SlideElement {
+        id,
         name,
         kind: ElementKind::Image,
         rect,
@@ -214,6 +240,96 @@ fn parse_pic(pic: &xml::Element) -> Option<SlideElement> {
         text_color: None,
         paragraphs: vec![],
     })
+}
+
+#[derive(Clone, Copy)]
+struct GroupTransform {
+    off_x: i64,
+    off_y: i64,
+    ext_cx: i64,
+    ext_cy: i64,
+    ch_off_x: i64,
+    ch_off_y: i64,
+    ch_ext_cx: i64,
+    ch_ext_cy: i64,
+}
+
+impl GroupTransform {
+    fn apply(self, rect: Rect) -> Rect {
+        let sx = self.ext_cx as f64 / self.ch_ext_cx as f64;
+        let sy = self.ext_cy as f64 / self.ch_ext_cy as f64;
+        Rect {
+            x: (self.off_x as f64 + (rect.x - self.ch_off_x) as f64 * sx).round() as i64,
+            y: (self.off_y as f64 + (rect.y - self.ch_off_y) as f64 * sy).round() as i64,
+            w: (rect.w as f64 * sx).round() as i64,
+            h: (rect.h as f64 * sy).round() as i64,
+        }
+    }
+}
+
+fn walk_shapes(node: &xml::Element, transforms: &[GroupTransform]) -> Vec<SlideElement> {
+    let mut elements = Vec::new();
+    for child in &node.children {
+        match child.tag.as_str() {
+            "sp" => {
+                if let Some(mut el) = parse_sp(child) {
+                    el.rect = apply_group_transforms(el.rect, transforms);
+                    elements.push(el);
+                }
+            }
+            "pic" => {
+                if let Some(mut el) = parse_pic(child) {
+                    el.rect = apply_group_transforms(el.rect, transforms);
+                    elements.push(el);
+                }
+            }
+            "grpSp" => elements.extend(enter_group(child, transforms)),
+            _ => {}
+        }
+    }
+    elements
+}
+
+fn enter_group(grp: &xml::Element, parent_transforms: &[GroupTransform]) -> Vec<SlideElement> {
+    let Some(transform) = parse_group_transform(grp) else {
+        return vec![];
+    };
+    let mut transforms = parent_transforms.to_vec();
+    transforms.push(transform);
+    walk_shapes(grp, &transforms)
+}
+
+fn parse_group_transform(grp: &xml::Element) -> Option<GroupTransform> {
+    let xfrm = grp.find("grpSpPr")?.find("xfrm")?;
+    let off_x: i64 = xfrm.find("off")?.attr("x")?.parse().ok()?;
+    let off_y: i64 = xfrm.find("off")?.attr("y")?.parse().ok()?;
+    let ext_cx: i64 = xfrm.find("ext")?.attr("cx")?.parse().ok()?;
+    let ext_cy: i64 = xfrm.find("ext")?.attr("cy")?.parse().ok()?;
+    let ch_off_x: i64 = xfrm.find("chOff")?.attr("x")?.parse().ok()?;
+    let ch_off_y: i64 = xfrm.find("chOff")?.attr("y")?.parse().ok()?;
+    let ch_ext_cx: i64 = xfrm.find("chExt")?.attr("cx")?.parse().ok()?;
+    let ch_ext_cy: i64 = xfrm.find("chExt")?.attr("cy")?.parse().ok()?;
+    // Division by zero guard: a degenerate group with no child extent is skipped.
+    if ch_ext_cx == 0 || ch_ext_cy == 0 {
+        return None;
+    }
+    Some(GroupTransform {
+        off_x,
+        off_y,
+        ext_cx,
+        ext_cy,
+        ch_off_x,
+        ch_off_y,
+        ch_ext_cx,
+        ch_ext_cy,
+    })
+}
+
+// Transforms a rect from child-space to slide-space by applying each group
+// transform. Transforms are ordered outermost-first; applying in reverse gives
+// innermost-first traversal (child -> slide direction).
+fn apply_group_transforms(rect: Rect, transforms: &[GroupTransform]) -> Rect {
+    transforms.iter().rev().fold(rect, |r, t| t.apply(r))
 }
 
 fn slide_order(pkg: &Package) -> Vec<String> {
@@ -582,7 +698,7 @@ mod tests {
     #[test]
     fn parse_pic_skips_zero_sized_pictures() {
         let pic_xml = r#"<p:pic xmlns:p="p" xmlns:a="a">
-            <p:nvPicPr><p:cNvPr name="Empty"/></p:nvPicPr>
+            <p:nvPicPr><p:cNvPr id="1" name="Empty"/></p:nvPicPr>
             <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm></p:spPr>
         </p:pic>"#;
         let pic = xml::Element::parse(pic_xml).unwrap();
@@ -590,28 +706,119 @@ mod tests {
     }
 
     #[test]
-    fn parse_slide_skips_pictures_inside_groups() {
-        // A picture nested in a group carries child-space coordinates; until group
-        // transforms are applied it must not be read as a slide-level image.
+    fn walk_shapes_applies_group_translate_to_child_sp() {
+        // Group at (10,10), identity scale; child sp at (5,5) -> slide (15,15).
         let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
             <p:cSld><p:spTree>
                 <p:grpSp>
+                    <p:grpSpPr><a:xfrm>
+                        <a:off x="10" y="10"/>
+                        <a:ext cx="100" cy="100"/>
+                        <a:chOff x="0" y="0"/>
+                        <a:chExt cx="100" cy="100"/>
+                    </a:xfrm></p:grpSpPr>
+                    <p:sp>
+                        <p:nvSpPr><p:cNvPr id="2" name="Shape1"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
+                        <p:spPr><a:xfrm><a:off x="5" y="5"/><a:ext cx="20" cy="20"/></a:xfrm></p:spPr>
+                        <p:txBody><a:p><a:r><a:t>hi</a:t></a:r></a:p></p:txBody>
+                    </p:sp>
+                </p:grpSp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let slide = parse_slide(0, slide_xml).unwrap();
+        assert_eq!(slide.elements.len(), 1);
+        assert_eq!(slide.elements[0].rect.x, 15);
+        assert_eq!(slide.elements[0].rect.y, 15);
+    }
+
+    #[test]
+    fn walk_shapes_applies_group_transform_to_nested_pic() {
+        // Group at (100,200), identity scale; pic at (50,50) -> slide (150,250).
+        let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:grpSp>
+                    <p:grpSpPr><a:xfrm>
+                        <a:off x="100" y="200"/>
+                        <a:ext cx="300" cy="400"/>
+                        <a:chOff x="0" y="0"/>
+                        <a:chExt cx="300" cy="400"/>
+                    </a:xfrm></p:grpSpPr>
                     <p:pic>
-                        <p:nvPicPr><p:cNvPr name="Nested"/></p:nvPicPr>
-                        <p:spPr><a:xfrm><a:off x="1" y="2"/><a:ext cx="3" cy="4"/></a:xfrm></p:spPr>
+                        <p:nvPicPr><p:cNvPr id="3" name="Logo"/></p:nvPicPr>
+                        <p:spPr><a:xfrm><a:off x="50" y="50"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr>
                     </p:pic>
                 </p:grpSp>
             </p:spTree></p:cSld>
         </p:sld>"#;
         let slide = parse_slide(0, slide_xml).unwrap();
-        assert!(slide.elements.iter().all(|e| e.kind != ElementKind::Image));
+        assert_eq!(slide.elements.len(), 1);
+        assert_eq!(slide.elements[0].kind, ElementKind::Image);
+        assert_eq!(slide.elements[0].rect.x, 150);
+        assert_eq!(slide.elements[0].rect.y, 250);
+    }
+
+    #[test]
+    fn walk_shapes_composes_nested_group_transforms() {
+        // Group A at (100,0), identity scale; Group B inside at (50,50), identity
+        // scale; shape inside B at (10,10) -> A-child (60,60) -> slide (160,60).
+        let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:grpSp>
+                    <p:grpSpPr><a:xfrm>
+                        <a:off x="100" y="0"/>
+                        <a:ext cx="200" cy="200"/>
+                        <a:chOff x="0" y="0"/>
+                        <a:chExt cx="200" cy="200"/>
+                    </a:xfrm></p:grpSpPr>
+                    <p:grpSp>
+                        <p:grpSpPr><a:xfrm>
+                            <a:off x="50" y="50"/>
+                            <a:ext cx="100" cy="100"/>
+                            <a:chOff x="0" y="0"/>
+                            <a:chExt cx="100" cy="100"/>
+                        </a:xfrm></p:grpSpPr>
+                        <p:sp>
+                            <p:nvSpPr><p:cNvPr id="4" name="Inner"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
+                            <p:spPr><a:xfrm><a:off x="10" y="10"/><a:ext cx="20" cy="20"/></a:xfrm></p:spPr>
+                            <p:txBody><a:p><a:r><a:t>nested</a:t></a:r></a:p></p:txBody>
+                        </p:sp>
+                    </p:grpSp>
+                </p:grpSp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let slide = parse_slide(0, slide_xml).unwrap();
+        assert_eq!(slide.elements.len(), 1);
+        assert_eq!(slide.elements[0].rect.x, 160);
+        assert_eq!(slide.elements[0].rect.y, 60);
+    }
+
+    #[test]
+    fn walk_shapes_skips_degenerate_group_with_zero_chext() {
+        let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:grpSp>
+                    <p:grpSpPr><a:xfrm>
+                        <a:off x="0" y="0"/>
+                        <a:ext cx="100" cy="100"/>
+                        <a:chOff x="0" y="0"/>
+                        <a:chExt cx="0" cy="0"/>
+                    </a:xfrm></p:grpSpPr>
+                    <p:pic>
+                        <p:nvPicPr><p:cNvPr id="5" name="Image"/></p:nvPicPr>
+                        <p:spPr><a:xfrm><a:off x="1" y="1"/><a:ext cx="10" cy="10"/></a:xfrm></p:spPr>
+                    </p:pic>
+                </p:grpSp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let slide = parse_slide(0, slide_xml).unwrap();
+        assert!(slide.elements.is_empty());
     }
 
     #[test]
     fn classify_sp_title_by_ph_type() {
         let sp_xml = r#"<p:sp xmlns:p="p">
             <p:nvSpPr>
-                <p:cNvPr name="Other"/>
+                <p:cNvPr id="6" name="Other"/>
                 <p:nvPr><p:ph type="title"/></p:nvPr>
             </p:nvSpPr>
             <p:spPr><a:xfrm xmlns:a="a"><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm></p:spPr>
@@ -623,7 +830,7 @@ mod tests {
     #[test]
     fn classify_sp_title_by_name_fallback() {
         let sp_xml = r#"<p:sp xmlns:p="p">
-            <p:nvSpPr><p:cNvPr name="Title"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
+            <p:nvSpPr><p:cNvPr id="7" name="Title"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
             <p:spPr><a:xfrm xmlns:a="a"><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm></p:spPr>
         </p:sp>"#;
         let sp = xml::Element::parse(sp_xml).unwrap();
@@ -633,7 +840,7 @@ mod tests {
     #[test]
     fn classify_sp_textbox_when_txbox_and_no_name_match() {
         let sp_xml = r#"<p:sp xmlns:p="p">
-            <p:nvSpPr><p:cNvPr name="Text Box 5"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:nvSpPr><p:cNvPr id="8" name="Text Box 5"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
             <p:spPr><a:xfrm xmlns:a="a"><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm></p:spPr>
         </p:sp>"#;
         let sp = xml::Element::parse(sp_xml).unwrap();
@@ -643,7 +850,7 @@ mod tests {
     #[test]
     fn classify_sp_autoshape_without_txbox() {
         let sp_xml = r#"<p:sp xmlns:p="p">
-            <p:nvSpPr><p:cNvPr name="Rectangle 3"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+            <p:nvSpPr><p:cNvPr id="9" name="Rectangle 3"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
             <p:spPr><a:xfrm xmlns:a="a"><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm></p:spPr>
         </p:sp>"#;
         let sp = xml::Element::parse(sp_xml).unwrap();
@@ -653,7 +860,7 @@ mod tests {
     #[test]
     fn parse_sp_extracts_text_and_font_size() {
         let sp_xml = r#"<p:sp xmlns:p="p" xmlns:a="a">
-            <p:nvSpPr><p:cNvPr name="Body 1"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
+            <p:nvSpPr><p:cNvPr id="10" name="Body 1"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
             <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr>
             <p:txBody>
                 <a:p><a:r><a:rPr sz="1800"/><a:t>Hello</a:t></a:r></a:p>
@@ -662,14 +869,91 @@ mod tests {
         </p:sp>"#;
         let sp = xml::Element::parse(sp_xml).unwrap();
         let el = parse_sp(&sp).unwrap();
-        assert_eq!(el.paragraphs, vec!["Hello", "World"]);
+        let texts: Vec<&str> = el.paragraphs.iter().map(|p| p.text.as_str()).collect();
+        assert_eq!(texts, vec!["Hello", "World"]);
         assert_eq!(el.font_size, Some(1800));
+    }
+
+    #[test]
+    fn body_placeholder_paragraphs_default_to_bullet_kind() {
+        let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:sp>
+                    <p:nvSpPr>
+                        <p:cNvPr id="11" name="Content"/>
+                        <p:nvPr><p:ph type="body"/></p:nvPr>
+                    </p:nvSpPr>
+                    <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr>
+                    <p:txBody><a:p><a:r><a:t>Point one</a:t></a:r></a:p></p:txBody>
+                </p:sp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let slide = parse_slide(0, slide_xml).unwrap();
+        assert_eq!(slide.elements[0].paragraphs[0].kind, ParagraphKind::Bullet);
+    }
+
+    #[test]
+    fn autoshape_paragraphs_default_to_plain_kind() {
+        let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:sp>
+                    <p:nvSpPr><p:cNvPr id="12" name="Rect 1"/><p:cNvSpPr/></p:nvSpPr>
+                    <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr>
+                    <p:txBody><a:p><a:r><a:t>Label text</a:t></a:r></a:p></p:txBody>
+                </p:sp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let slide = parse_slide(0, slide_xml).unwrap();
+        assert_eq!(slide.elements[0].paragraphs[0].kind, ParagraphKind::Plain);
+    }
+
+    #[test]
+    fn autoshape_paragraph_with_buchar_is_bullet_kind() {
+        let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:sp>
+                    <p:nvSpPr><p:cNvPr id="13" name="Rect 1"/><p:cNvSpPr/></p:nvSpPr>
+                    <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr>
+                    <p:txBody>
+                        <a:p>
+                            <a:pPr><a:buChar char="•"/></a:pPr>
+                            <a:r><a:t>Bullet item</a:t></a:r>
+                        </a:p>
+                    </p:txBody>
+                </p:sp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let slide = parse_slide(0, slide_xml).unwrap();
+        assert_eq!(slide.elements[0].paragraphs[0].kind, ParagraphKind::Bullet);
+    }
+
+    #[test]
+    fn body_paragraph_with_bunone_is_plain_kind() {
+        let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:sp>
+                    <p:nvSpPr>
+                        <p:cNvPr id="14" name="Content"/>
+                        <p:nvPr><p:ph type="body"/></p:nvPr>
+                    </p:nvSpPr>
+                    <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr>
+                    <p:txBody>
+                        <a:p>
+                            <a:pPr><a:buNone/></a:pPr>
+                            <a:r><a:t>Not a bullet</a:t></a:r>
+                        </a:p>
+                    </p:txBody>
+                </p:sp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let slide = parse_slide(0, slide_xml).unwrap();
+        assert_eq!(slide.elements[0].paragraphs[0].kind, ParagraphKind::Plain);
     }
 
     #[test]
     fn parse_sp_skips_font_family_theme_references() {
         let sp_xml = r#"<p:sp xmlns:p="p" xmlns:a="a">
-            <p:nvSpPr><p:cNvPr name="Body 1"/></p:nvSpPr>
+            <p:nvSpPr><p:cNvPr id="15" name="Body 1"/></p:nvSpPr>
             <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr>
             <p:txBody>
                 <a:p>

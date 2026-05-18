@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use intern_core::model::{self, Presentation, SlideData};
+use intern_core::model::{self, Presentation, SlideData, SlideElement};
 use intern_core::reader::{self, SlideExclusion};
 use intern_core::rules;
 use miette::IntoDiagnostic;
@@ -13,15 +13,17 @@ use crate::ruleset::Selection;
 /// Maximum length of the offending-element text snippet shown in reports.
 const EXCERPT_CHARS: usize = 30;
 
-/// A violation plus display context the rules themselves do not carry - currently
-/// a short snippet of the offending element's text. Derefs to the inner
-/// `Violation` so reporting code can read its fields directly.
+/// A violation plus display context the rules themselves do not carry. Derefs to
+/// the inner `Violation` so reporting code can read its fields directly.
 #[derive(Clone)]
 pub struct Finding {
     pub violation: rules::Violation,
     /// First `EXCERPT_CHARS` characters of the offending element's text, when it
     /// has any. `None` for geometry-only or text-free elements.
     pub excerpt: Option<String>,
+    /// Human-readable element description: `"TextBox at (42px, 107px)"`.
+    /// `None` when the violation has no element reference.
+    pub element_display: Option<String>,
 }
 
 impl Deref for Finding {
@@ -61,6 +63,11 @@ pub fn check_file(
         slides.retain(|s| s.index + 1 == n);
     }
 
+    let element_map: HashMap<(usize, u32), &SlideElement> = slides
+        .iter()
+        .flat_map(|s| s.elements.iter().map(move |e| ((s.index + 1, e.id), e)))
+        .collect();
+
     let mut findings = Vec::new();
     for rule in &selection.rules {
         let threshold = cfg.rule_threshold_px(rule.id(), global_px) as i64 * model::EMU_PER_PX;
@@ -73,27 +80,32 @@ pub fn check_file(
         let view = slides_for_rule(&slides, &exclusions, rule.id());
         for mut violation in rule.check(&view, &ctx) {
             violation.severity = severity;
-            let excerpt = excerpt_for(&slides, &violation);
-            findings.push(Finding { violation, excerpt });
+            let resolved = violation
+                .slide
+                .zip(violation.element)
+                .and_then(|(slide_no, id)| element_map.get(&(slide_no, id)).copied());
+            let excerpt = excerpt_text(resolved);
+            let element_display = resolved.map(element_display_str);
+            findings.push(Finding {
+                violation,
+                excerpt,
+                element_display,
+            });
         }
     }
     Ok(findings)
 }
 
-/// A short snippet of a violation's offending element text. Looks the element up
-/// by name on its slide; whitespace is collapsed so the snippet stays on one line.
-/// Yields `None` when the element is composite, absent, text-free, or - since the
-/// lookup is by name - when several elements on the slide share that name.
-fn excerpt_for(slides: &[SlideData], v: &rules::Violation) -> Option<String> {
-    let slide_no = v.slide?;
-    let name = v.element.as_deref()?;
-    let slide = slides.iter().find(|s| s.index + 1 == slide_no)?;
-    let mut matches = slide.elements.iter().filter(|e| e.name == name);
-    let element = matches.next()?;
-    if matches.next().is_some() {
-        return None;
-    }
-    let text = element.paragraphs.join(" ");
+/// First `EXCERPT_CHARS` characters of the element's text (whitespace collapsed).
+/// Returns `None` when the element is absent or carries no text.
+fn excerpt_text(element: Option<&SlideElement>) -> Option<String> {
+    let element = element?;
+    let text = element
+        .paragraphs
+        .iter()
+        .map(|p| p.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
     let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.is_empty() {
         return None;
@@ -104,6 +116,13 @@ fn excerpt_for(slides: &[SlideData], v: &rules::Violation) -> Option<String> {
     } else {
         Some(collapsed)
     }
+}
+
+/// `"TextBox at (42px, 107px)"` - kind and top-left corner in screen pixels.
+fn element_display_str(e: &SlideElement) -> String {
+    let x_px = e.rect.x / model::EMU_PER_PX;
+    let y_px = e.rect.y / model::EMU_PER_PX;
+    format!("{} at ({}px, {}px)", e.kind, x_px, y_px)
 }
 
 /// The slides a rule should see: all of them, unless some slide's `intern: disable`
@@ -128,7 +147,7 @@ fn slides_for_rule<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use intern_core::model::{ElementKind, Rect, SlideElement};
+    use intern_core::model::{ElementKind, Paragraph, ParagraphKind, Rect, SlideElement};
 
     fn slide(index: usize) -> SlideData {
         SlideData {
@@ -137,8 +156,9 @@ mod tests {
         }
     }
 
-    fn text_element(name: &str, paragraphs: Vec<&str>) -> SlideElement {
+    fn text_element(id: u32, name: &str, paragraphs: Vec<&str>) -> SlideElement {
         SlideElement {
+            id,
             name: name.into(),
             kind: ElementKind::TextBox,
             rect: Rect {
@@ -150,69 +170,39 @@ mod tests {
             font_size: None,
             font_family: None,
             text_color: None,
-            paragraphs: paragraphs.into_iter().map(str::to_string).collect(),
-        }
-    }
-
-    fn violation(slide: Option<usize>, element: Option<&str>) -> rules::Violation {
-        rules::Violation {
-            rule_id: "ALL_CAPS",
-            slide,
-            element: element.map(str::to_string),
-            message: rules::ViolationMessage::AllCaps,
-            severity: rules::Severity::Warning,
-            fix: None,
+            paragraphs: paragraphs
+                .into_iter()
+                .map(|s| Paragraph {
+                    text: s.to_string(),
+                    kind: ParagraphKind::Plain,
+                })
+                .collect(),
         }
     }
 
     #[test]
-    fn excerpt_for_collapses_element_text() {
-        let slides = vec![SlideData {
-            index: 0,
-            elements: vec![text_element("Textfeld 100", vec!["HELLO  THERE", "WORLD"])],
-        }];
-        let v = violation(Some(1), Some("Textfeld 100"));
+    fn excerpt_text_collapses_element_text() {
+        let el = text_element(1, "Textfeld 100", vec!["HELLO  THERE", "WORLD"]);
         assert_eq!(
-            excerpt_for(&slides, &v).as_deref(),
+            excerpt_text(Some(&el)).as_deref(),
             Some("HELLO THERE WORLD")
         );
     }
 
     #[test]
-    fn excerpt_for_truncates_long_text() {
+    fn excerpt_text_truncates_long_text() {
         let long = "x".repeat(120);
-        let slides = vec![SlideData {
-            index: 0,
-            elements: vec![text_element("Body", vec![long.as_str()])],
-        }];
-        let v = violation(Some(1), Some("Body"));
-        let excerpt = excerpt_for(&slides, &v).unwrap();
+        let el = text_element(1, "Body", vec![long.as_str()]);
+        let excerpt = excerpt_text(Some(&el)).unwrap();
         assert!(excerpt.ends_with("..."));
         assert_eq!(excerpt.chars().count(), EXCERPT_CHARS + 3);
     }
 
     #[test]
-    fn excerpt_for_none_when_element_absent_or_empty() {
-        let slides = vec![SlideData {
-            index: 0,
-            elements: vec![text_element("Empty", vec![])],
-        }];
-        assert!(excerpt_for(&slides, &violation(Some(1), Some("Empty"))).is_none());
-        assert!(excerpt_for(&slides, &violation(Some(1), Some("Missing"))).is_none());
-        assert!(excerpt_for(&slides, &violation(None, None)).is_none());
-    }
-
-    #[test]
-    fn excerpt_for_none_when_name_is_ambiguous() {
-        // Several elements share the name, so the by-name lookup is ambiguous.
-        let slides = vec![SlideData {
-            index: 0,
-            elements: vec![
-                text_element("Dup", vec!["first"]),
-                text_element("Dup", vec!["second"]),
-            ],
-        }];
-        assert!(excerpt_for(&slides, &violation(Some(1), Some("Dup"))).is_none());
+    fn excerpt_text_none_when_element_absent_or_empty() {
+        let empty = text_element(1, "Empty", vec![]);
+        assert!(excerpt_text(Some(&empty)).is_none());
+        assert!(excerpt_text(None).is_none());
     }
 
     #[test]

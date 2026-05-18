@@ -45,7 +45,7 @@ impl Rule for EmptyElementRule {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
-                        element: Some(e.name.clone()),
+                        element: Some(e.id),
                         message: ViolationMessage::EmptyElement,
                         severity: Severity::Warning,
                         fix: None,
@@ -72,7 +72,7 @@ impl Rule for ElementOverflowRule {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
-                        element: Some(e.name.clone()),
+                        element: Some(e.id),
                         message: ViolationMessage::ElementOverflow,
                         severity: Severity::Warning,
                         fix: None,
@@ -110,7 +110,7 @@ impl Rule for TextElementOverlapRule {
                         violations.push(Violation {
                             rule_id: self.id(),
                             slide: Some(slide.index + 1),
-                            element: Some(texts[i].name.clone()),
+                            element: Some(texts[i].id),
                             message: ViolationMessage::ElementOverlap {
                                 other_element: texts[j].name.clone(),
                             },
@@ -151,7 +151,7 @@ impl Rule for SlideCountRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ElementKind, Rect, SlideData, SlideElement};
+    use crate::model::{ElementKind, Paragraph, ParagraphKind, Rect, SlideData, SlideElement};
 
     // 2 px threshold; 4:3 slide so the overflow-bound tests keep their geometry.
     const T: RuleContext = RuleContext {
@@ -162,6 +162,7 @@ mod tests {
 
     fn shape(name: &str, x: i64, y: i64, w: i64, h: i64) -> SlideElement {
         SlideElement {
+            id: 1,
             name: name.into(),
             kind: ElementKind::TextBox,
             rect: Rect { x, y, w, h },
@@ -174,6 +175,7 @@ mod tests {
 
     fn title(name: &str) -> SlideElement {
         SlideElement {
+            id: 2,
             name: name.into(),
             kind: ElementKind::Title,
             rect: Rect {
@@ -185,12 +187,16 @@ mod tests {
             font_size: None,
             font_family: None,
             text_color: None,
-            paragraphs: vec!["Title".into()],
+            paragraphs: vec![Paragraph {
+                text: "Title".into(),
+                kind: ParagraphKind::Plain,
+            }],
         }
     }
 
     fn body(name: &str, paragraphs: Vec<&str>) -> SlideElement {
         SlideElement {
+            id: 3,
             name: name.into(),
             kind: ElementKind::Body,
             rect: Rect {
@@ -202,7 +208,13 @@ mod tests {
             font_size: None,
             font_family: None,
             text_color: None,
-            paragraphs: paragraphs.into_iter().map(str::to_string).collect(),
+            paragraphs: paragraphs
+                .into_iter()
+                .map(|s| Paragraph {
+                    text: s.to_string(),
+                    kind: ParagraphKind::Bullet,
+                })
+                .collect(),
         }
     }
 
@@ -219,6 +231,7 @@ mod tests {
 
     fn image(name: &str, x: i64, y: i64, w: i64, h: i64) -> SlideElement {
         SlideElement {
+            id: 4,
             name: name.into(),
             kind: ElementKind::Image,
             rect: Rect { x, y, w, h },
@@ -231,7 +244,10 @@ mod tests {
 
     fn text_box(name: &str, x: i64, y: i64, w: i64, h: i64) -> SlideElement {
         SlideElement {
-            paragraphs: vec!["text".into()],
+            paragraphs: vec![Paragraph {
+                text: "text".into(),
+                kind: ParagraphKind::Plain,
+            }],
             ..shape(name, x, y, w, h)
         }
     }
@@ -361,7 +377,7 @@ mod tests {
         ]);
         let v = TextElementOverlapRule.check(&[s], &T);
         assert_eq!(v.len(), 1);
-        assert_eq!(v[0].element.as_deref(), Some("A"));
+        assert_eq!(v[0].element, Some(1));
         assert!(matches!(
             &v[0].message,
             ViolationMessage::ElementOverlap { other_element } if other_element == "B"

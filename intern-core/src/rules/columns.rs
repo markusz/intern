@@ -34,7 +34,7 @@ impl Rule for ColumnLeftEdgeRule {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
-                        element: Some(slide.elements[i].name.clone()),
+                        element: Some(slide.elements[i].id),
                         message: ViolationMessage::EdgeOff { diff_emu: diff },
                         severity: Severity::Warning,
                         fix: Some(Fix::SetX {
@@ -124,7 +124,7 @@ impl Rule for ColumnRightLeftEdgeRule {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
-                        element: Some(slide.elements[i].name.clone()),
+                        element: Some(slide.elements[i].id),
                         message: ViolationMessage::EdgeOff { diff_emu: diff },
                         severity: Severity::Warning,
                         fix: Some(Fix::SetX {
@@ -154,6 +154,7 @@ mod tests {
 
     fn shape(name: &str, x: i64, y: i64) -> SlideElement {
         SlideElement {
+            id: 1,
             name: name.to_owned(),
             kind: ElementKind::TextBox,
             rect: Rect {

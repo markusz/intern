@@ -102,7 +102,7 @@ fn render_table(violations: &[Finding], group_by: GroupBy) -> String {
             .slide
             .map(|n| n.to_string())
             .unwrap_or_else(|| "-".to_string());
-        let element = v.element.clone().unwrap_or_else(|| "-".to_string());
+        let element = v.element_display.clone().unwrap_or_else(|| "-".to_string());
         let text = v.excerpt.clone().unwrap_or_else(|| "-".to_string());
         let message = v.message.to_string();
         match group_by {
@@ -150,7 +150,7 @@ fn render_text_by_slide(violations: &[Finding]) -> String {
                 }
             }
         }
-        match &v.element {
+        match &v.element_display {
             Some(el) => {
                 let _ = writeln!(
                     out,
@@ -185,7 +185,7 @@ fn render_text_by_rule(violations: &[Finding]) -> String {
             .slide
             .map(|n| format!("slide {n}"))
             .unwrap_or_else(|| "presentation".to_string());
-        match &v.element {
+        match &v.element_display {
             Some(el) => {
                 let _ = writeln!(out, "  {loc} - {el}{} - {}", excerpt_suffix(v), v.message);
             }
@@ -219,6 +219,7 @@ fn summary(violations: &[Finding]) -> String {
 struct JsonViolation<'a> {
     rule_id: &'a str,
     slide: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     element: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     excerpt: Option<&'a str>,
@@ -230,7 +231,7 @@ fn json_violation(v: &Finding) -> JsonViolation<'_> {
     JsonViolation {
         rule_id: v.rule_id,
         slide: v.slide,
-        element: v.element.as_deref(),
+        element: v.element_display.as_deref(),
         excerpt: v.excerpt.as_deref(),
         message: v.message.to_string(),
         severity: match v.severity {
@@ -269,6 +270,7 @@ mod tests {
                 fix: None,
             },
             excerpt: None,
+            element_display: None,
         }
     }
 
@@ -312,7 +314,7 @@ mod tests {
     #[test]
     fn table_shows_offending_element_text() {
         let mut f = finding("ALL_CAPS", Some(2), Severity::Warning);
-        f.violation.element = Some("Textfeld 100".to_string());
+        f.element_display = Some("TextBox at (42px, 107px)".to_string());
         f.excerpt = Some("SOME SHOUTING TEXT".to_string());
         let out = render(
             &results(vec![("deck.pptx", vec![f])]),
@@ -320,6 +322,7 @@ mod tests {
             OutputFormat::Table,
         );
         assert!(out.contains("SOME SHOUTING TEXT"), "{out}");
+        assert!(out.contains("TextBox at (42px, 107px)"), "{out}");
     }
 
     #[test]

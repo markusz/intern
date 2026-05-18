@@ -67,10 +67,7 @@ impl Rule for GridHSpacingRule {
                         violations.push(Violation {
                             rule_id: self.id(),
                             slide: Some(slide.index + 1),
-                            element: Some(format!(
-                                "{} / {}",
-                                slide.elements[pair[0]].name, slide.elements[pair[1]].name
-                            )),
+                            element: Some(slide.elements[pair[0]].id),
                             message: ViolationMessage::GapUneven {
                                 actual_emu: sp,
                                 expected_emu: exp,
@@ -124,10 +121,7 @@ impl Rule for GridVSpacingRule {
                         violations.push(Violation {
                             rule_id: self.id(),
                             slide: Some(slide.index + 1),
-                            element: Some(format!(
-                                "{} / {}",
-                                slide.elements[pair[0]].name, slide.elements[pair[1]].name
-                            )),
+                            element: Some(slide.elements[pair[0]].id),
                             message: ViolationMessage::GapUneven {
                                 actual_emu: sp,
                                 expected_emu: exp,
@@ -168,7 +162,7 @@ impl Rule for GridRowTopRule {
                         violations.push(Violation {
                             rule_id: self.id(),
                             slide: Some(slide.index + 1),
-                            element: Some(slide.elements[i].name.clone()),
+                            element: Some(slide.elements[i].id),
                             message: ViolationMessage::EdgeOff { diff_emu: diff },
                             severity: Severity::Warning,
                             fix: Some(Fix::SetY {
@@ -210,7 +204,7 @@ impl Rule for GridColLeftRule {
                         violations.push(Violation {
                             rule_id: self.id(),
                             slide: Some(slide.index + 1),
-                            element: Some(slide.elements[i].name.clone()),
+                            element: Some(slide.elements[i].id),
                             message: ViolationMessage::EdgeOff { diff_emu: diff },
                             severity: Severity::Warning,
                             fix: Some(Fix::SetX {
@@ -240,6 +234,7 @@ mod tests {
 
     fn img(name: &str, x: i64, y: i64) -> SlideElement {
         SlideElement {
+            id: 1,
             name: name.into(),
             kind: ElementKind::Image,
             rect: Rect {

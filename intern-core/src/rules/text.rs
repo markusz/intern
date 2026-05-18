@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
-use crate::model::{ElementKind, SlideData, SlideElement};
+use crate::model::{ElementKind, ParagraphKind, SlideData, SlideElement};
 use crate::rules::{Fix, Rule, RuleContext, Severity, Violation, ViolationMessage};
 
 pub struct BodyFontSizeRule;
@@ -59,26 +59,26 @@ impl Rule for BodyFontSizeRule {
 
     fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let es = body_elements(slides);
-        let sized: Vec<(usize, String, u32)> = es
+        let sized: Vec<(usize, u32, String, u32)> = es
             .iter()
-            .filter_map(|(idx, e)| e.font_size.map(|sz| (*idx, e.name.clone(), sz)))
+            .filter_map(|(idx, e)| e.font_size.map(|sz| (*idx, e.id, e.name.clone(), sz)))
             .collect();
 
         if sized.len() < 2 {
             return vec![];
         }
 
-        let sizes: Vec<u32> = sized.iter().map(|(_, _, sz)| *sz).collect();
+        let sizes: Vec<u32> = sized.iter().map(|(_, _, _, sz)| *sz).collect();
         // SAFETY: sized.len() >= 2 ensures sizes is non-empty.
         let expected = mode(&sizes).unwrap();
 
         sized
             .iter()
-            .filter(|(_, _, sz)| *sz != expected)
-            .map(|(idx, name, sz)| Violation {
+            .filter(|(_, _, _, sz)| *sz != expected)
+            .map(|(idx, id, name, sz)| Violation {
                 rule_id: self.id(),
                 slide: Some(idx + 1),
-                element: Some(name.clone()),
+                element: Some(*id),
                 message: ViolationMessage::BodyFontSize {
                     actual: *sz,
                     expected,
@@ -101,13 +101,9 @@ impl Rule for BodyFontFamilyRule {
 
     fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let es = body_elements(slides);
-        let familied: Vec<(usize, String, String)> = es
+        let familied: Vec<(usize, u32, String)> = es
             .iter()
-            .filter_map(|(idx, e)| {
-                e.font_family
-                    .as_ref()
-                    .map(|f| (*idx, e.name.clone(), f.clone()))
-            })
+            .filter_map(|(idx, e)| e.font_family.as_ref().map(|f| (*idx, e.id, f.clone())))
             .collect();
 
         if familied.len() < 2 {
@@ -121,10 +117,10 @@ impl Rule for BodyFontFamilyRule {
         familied
             .iter()
             .filter(|(_, _, f)| f != &expected)
-            .map(|(idx, name, actual)| Violation {
+            .map(|(idx, id, actual)| Violation {
                 rule_id: self.id(),
                 slide: Some(idx + 1),
-                element: Some(name.clone()),
+                element: Some(*id),
                 message: ViolationMessage::BodyFontFamily {
                     actual: actual.clone(),
                     expected: expected.clone(),
@@ -143,13 +139,9 @@ impl Rule for BodyTextColorRule {
 
     fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let es = body_elements(slides);
-        let colored: Vec<(usize, String, String)> = es
+        let colored: Vec<(usize, u32, String)> = es
             .iter()
-            .filter_map(|(idx, e)| {
-                e.text_color
-                    .as_ref()
-                    .map(|c| (*idx, e.name.clone(), c.clone()))
-            })
+            .filter_map(|(idx, e)| e.text_color.as_ref().map(|c| (*idx, e.id, c.clone())))
             .collect();
 
         if colored.len() < 2 {
@@ -163,10 +155,10 @@ impl Rule for BodyTextColorRule {
         colored
             .iter()
             .filter(|(_, _, c)| c != &expected)
-            .map(|(idx, name, actual)| Violation {
+            .map(|(idx, id, actual)| Violation {
                 rule_id: self.id(),
                 slide: Some(idx + 1),
-                element: Some(name.clone()),
+                element: Some(*id),
                 message: ViolationMessage::BodyTextColor {
                     actual: actual.clone(),
                     expected: expected.clone(),
@@ -187,11 +179,11 @@ impl Rule for DoubleSpaceRule {
         let mut violations = Vec::new();
         for slide in slides {
             for e in &slide.elements {
-                if e.paragraphs.iter().any(|p| p.contains("  ")) {
+                if e.paragraphs.iter().any(|p| p.text.contains("  ")) {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
-                        element: Some(e.name.clone()),
+                        element: Some(e.id),
                         message: ViolationMessage::DoubleSpace,
                         severity: Severity::Warning,
                         fix: Some(Fix::NormalizeWhitespace {
@@ -220,12 +212,12 @@ impl Rule for LeadingSpaceRule {
             for e in &slide.elements {
                 if e.paragraphs
                     .iter()
-                    .any(|p| p.starts_with(|c: char| c.is_whitespace()))
+                    .any(|p| p.text.starts_with(|c: char| c.is_whitespace()))
                 {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
-                        element: Some(e.name.clone()),
+                        element: Some(e.id),
                         message: ViolationMessage::LeadingSpace,
                         severity: Severity::Warning,
                         fix: Some(Fix::NormalizeWhitespace {
@@ -251,10 +243,12 @@ fn first_alpha(s: &str) -> Option<char> {
 fn bullet_capitalizations(
     slide_idx: usize,
     e: &SlideElement,
-) -> impl Iterator<Item = (bool, usize, &str)> {
+) -> impl Iterator<Item = (bool, usize, u32)> {
+    let id = e.id;
     e.paragraphs
         .iter()
-        .filter_map(move |p| first_alpha(p).map(|c| (c.is_uppercase(), slide_idx, e.name.as_str())))
+        .filter(|p| p.kind == ParagraphKind::Bullet)
+        .filter_map(move |p| first_alpha(&p.text).map(|c| (c.is_uppercase(), slide_idx, id)))
 }
 
 impl Rule for BulletCapitalizationRule {
@@ -265,7 +259,7 @@ impl Rule for BulletCapitalizationRule {
     fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let es = body_elements(slides);
 
-        let all: Vec<(bool, usize, &str)> = es
+        let all: Vec<(bool, usize, u32)> = es
             .iter()
             .flat_map(|(idx, e)| bullet_capitalizations(*idx, e))
             .collect();
@@ -280,12 +274,12 @@ impl Rule for BulletCapitalizationRule {
         // One violation per element that has any paragraph deviating from the majority.
         let mut seen = HashSet::new();
         let mut violations = Vec::new();
-        for (is_upper, idx, name) in &all {
-            if *is_upper != majority_upper && seen.insert((*idx, *name)) {
+        for (is_upper, idx, id) in &all {
+            if *is_upper != majority_upper && seen.insert((*idx, *id)) {
                 violations.push(Violation {
                     rule_id: self.id(),
                     slide: Some(idx + 1),
-                    element: Some(name.to_string()),
+                    element: Some(*id),
                     message: ViolationMessage::BulletCapitalization {
                         expected_uppercase: majority_upper,
                     },
@@ -311,14 +305,14 @@ impl Rule for AllCapsRule {
                     continue;
                 }
                 let has_all_caps = e.paragraphs.iter().any(|p| {
-                    let mut alpha = p.chars().filter(|c| c.is_alphabetic()).peekable();
+                    let mut alpha = p.text.chars().filter(|c| c.is_alphabetic()).peekable();
                     alpha.peek().is_some() && alpha.all(|c| c.is_uppercase())
                 });
                 if has_all_caps {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
-                        element: Some(e.name.clone()),
+                        element: Some(e.id),
                         message: ViolationMessage::AllCaps,
                         severity: Severity::Warning,
                         fix: None,
@@ -341,12 +335,14 @@ impl Rule for BulletPunctuationRule {
 
     fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
         let es = body_elements(slides);
-        let bullets: Vec<(bool, usize, &str)> = es
+        let bullets: Vec<(bool, usize, u32)> = es
             .iter()
             .flat_map(|(idx, e)| {
+                let id = e.id;
                 e.paragraphs
                     .iter()
-                    .map(move |p| (ends_with_punct(p), *idx, e.name.as_str()))
+                    .filter(|p| p.kind == ParagraphKind::Bullet)
+                    .map(move |p| (ends_with_punct(&p.text), *idx, id))
             })
             .collect();
 
@@ -359,12 +355,12 @@ impl Rule for BulletPunctuationRule {
 
         let mut seen = HashSet::new();
         let mut violations = Vec::new();
-        for (has_punct, idx, name) in &bullets {
-            if *has_punct != majority_punct && seen.insert((*idx, *name)) {
+        for (has_punct, idx, id) in &bullets {
+            if *has_punct != majority_punct && seen.insert((*idx, *id)) {
                 violations.push(Violation {
                     rule_id: self.id(),
                     slide: Some(idx + 1),
-                    element: Some(name.to_string()),
+                    element: Some(*id),
                     message: ViolationMessage::BulletPunctuation {
                         expected_punctuation: majority_punct,
                     },
@@ -389,13 +385,17 @@ impl Rule for BulletLengthRule {
                 if !is_text_element(&e.kind) {
                     continue;
                 }
-                for p in &e.paragraphs {
-                    let word_count = p.split_whitespace().count();
+                for p in e
+                    .paragraphs
+                    .iter()
+                    .filter(|p| p.kind == ParagraphKind::Bullet)
+                {
+                    let word_count = p.text.split_whitespace().count();
                     if word_count > self.limit {
                         violations.push(Violation {
                             rule_id: self.id(),
                             slide: Some(slide.index + 1),
-                            element: Some(e.name.clone()),
+                            element: Some(e.id),
                             message: ViolationMessage::BulletTooLong {
                                 word_count,
                                 limit: self.limit,
@@ -427,13 +427,13 @@ impl Rule for RepeatedWordRule {
         for slide in slides {
             for e in &slide.elements {
                 'para: for p in &e.paragraphs {
-                    let words: Vec<String> = p.split_whitespace().map(word_key).collect();
+                    let words: Vec<String> = p.text.split_whitespace().map(word_key).collect();
                     for w in words.windows(2) {
                         if !w[0].is_empty() && w[0] == w[1] {
                             violations.push(Violation {
                                 rule_id: self.id(),
                                 slide: Some(slide.index + 1),
-                                element: Some(e.name.clone()),
+                                element: Some(e.id),
                                 message: ViolationMessage::RepeatedWord { word: w[0].clone() },
                                 severity: Severity::Warning,
                                 fix: None,
@@ -507,7 +507,7 @@ impl Rule for ColorVarietyRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ElementKind, Rect, SlideData, SlideElement};
+    use crate::model::{ElementKind, Paragraph, ParagraphKind, Rect, SlideData, SlideElement};
 
     const T: RuleContext = RuleContext {
         threshold: 19_050,
@@ -527,6 +527,7 @@ mod tests {
         paragraphs: Vec<&str>,
     ) -> SlideElement {
         SlideElement {
+            id: 1,
             name: name.into(),
             kind: ElementKind::Body,
             rect: Rect {
@@ -538,7 +539,37 @@ mod tests {
             font_size,
             font_family: font_family.map(str::to_string),
             text_color: text_color.map(str::to_string),
-            paragraphs: paragraphs.into_iter().map(str::to_string).collect(),
+            paragraphs: paragraphs
+                .into_iter()
+                .map(|s| Paragraph {
+                    text: s.to_string(),
+                    kind: ParagraphKind::Bullet,
+                })
+                .collect(),
+        }
+    }
+
+    fn autoshape_with(name: &str, paragraphs: Vec<&str>) -> SlideElement {
+        SlideElement {
+            id: 2,
+            name: name.into(),
+            kind: ElementKind::Autoshape,
+            rect: Rect {
+                x: 100_000,
+                y: 100_000,
+                w: 3_000_000,
+                h: 1_000_000,
+            },
+            font_size: None,
+            font_family: None,
+            text_color: None,
+            paragraphs: paragraphs
+                .into_iter()
+                .map(|s| Paragraph {
+                    text: s.to_string(),
+                    kind: ParagraphKind::Plain,
+                })
+                .collect(),
         }
     }
 
@@ -717,6 +748,19 @@ mod tests {
     }
 
     #[test]
+    fn bullet_capitalization_skips_autoshapes() {
+        // "Rechteck 6" is an autoshape label, not a bullet list.
+        let slides = vec![slide(
+            0,
+            vec![
+                body_with("B1", None, None, None, vec!["First", "Second"]),
+                autoshape_with("Rechteck 6", vec!["umsatz- ziel 2018"]),
+            ],
+        )];
+        assert!(BulletCapitalizationRule.check(&slides, &T).is_empty());
+    }
+
+    #[test]
     fn bullet_capitalization_clean() {
         let slides = vec![
             slide(
@@ -804,6 +848,18 @@ mod tests {
     }
 
     #[test]
+    fn bullet_punctuation_skips_autoshapes() {
+        let slides = vec![slide(
+            0,
+            vec![
+                body_with("B1", None, None, None, vec!["First.", "Second.", "Third."]),
+                autoshape_with("Box 1", vec!["no trailing punct"]),
+            ],
+        )];
+        assert!(BulletPunctuationRule.check(&slides, &T).is_empty());
+    }
+
+    #[test]
     fn bullet_punctuation_clean_with_punct() {
         let slides = vec![
             slide(
@@ -878,6 +934,13 @@ mod tests {
                 expected_punctuation: false
             }
         ));
+    }
+
+    #[test]
+    fn bullet_length_skips_autoshapes() {
+        let long = "word ".repeat(21).trim().to_string();
+        let slides = vec![slide(0, vec![autoshape_with("Box 1", vec![long.as_str()])])];
+        assert!(BulletLengthRule { limit: 20 }.check(&slides, &T).is_empty());
     }
 
     #[test]
