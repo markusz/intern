@@ -27,8 +27,6 @@ pub struct Finding {
     pub element_position: Option<String>,
     /// The `<p:cNvPr>` id - stable within a slide, used for element-level suppression.
     pub element_id: Option<u32>,
-    /// Stable 8-char hex identifier for this finding; use with `intern ignore`.
-    pub finding_id: String,
 }
 
 impl Deref for Finding {
@@ -83,7 +81,8 @@ pub fn check_file(
 
     let mut findings = Vec::new();
     for rule in &selection.rules {
-        let threshold = cfg.rule_threshold_px(rule.id(), global_px) as i64 * model::EMU_PER_PX;
+        let default_px = rule.default_threshold_px().unwrap_or(global_px);
+        let threshold = cfg.rule_threshold_px(rule.id(), default_px) as i64 * model::EMU_PER_PX;
         let ctx = rules::RuleContext {
             threshold,
             slide_width,
@@ -109,14 +108,12 @@ pub fn check_file(
             let element_kind = resolved.map(|e| e.kind.to_string());
             let element_position = resolved.map(element_position_str);
             let element_id = resolved.map(|e| e.id);
-            let finding_id = compute_finding_id(rule.id(), violation.slide, violation.element);
             findings.push(Finding {
                 violation,
                 excerpt,
                 element_kind,
                 element_position,
                 element_id,
-                finding_id,
             });
         }
     }
@@ -172,32 +169,6 @@ fn slides_for_rule<'a>(
     }
 }
 
-/// Stable 8-character hex finding identifier. FNV-1a over (rule_id, slide, element_id)
-/// so it is deterministic across runs and platforms.
-fn compute_finding_id(rule_id: &str, slide: Option<usize>, element_id: Option<u32>) -> String {
-    const OFFSET: u64 = 14695981039346656037;
-    const PRIME: u64 = 1099511628211;
-    let mut h = OFFSET;
-    for b in rule_id
-        .as_bytes()
-        .iter()
-        .copied()
-        .chain(std::iter::once(0u8))
-    {
-        h ^= b as u64;
-        h = h.wrapping_mul(PRIME);
-    }
-    for b in (slide.unwrap_or(0) as u64).to_le_bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(PRIME);
-    }
-    for b in (element_id.unwrap_or(0) as u64).to_le_bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(PRIME);
-    }
-    format!("{:08x}", h as u32)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,6 +178,7 @@ mod tests {
         SlideData {
             index,
             elements: vec![],
+            units: vec![],
         }
     }
 
@@ -277,23 +249,5 @@ mod tests {
 
         let for_other = slides_for_rule(&slides, &exclusions, "GRID_ROW_TOP");
         assert_eq!(for_other.len(), 3);
-    }
-
-    #[test]
-    fn compute_finding_id_is_stable() {
-        let a = compute_finding_id("TITLE_Y", Some(3), Some(7));
-        let b = compute_finding_id("TITLE_Y", Some(3), Some(7));
-        assert_eq!(a, b);
-        assert_eq!(a.len(), 8);
-        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn compute_finding_id_differs_by_input() {
-        let base = compute_finding_id("TITLE_Y", Some(3), Some(7));
-        assert_ne!(base, compute_finding_id("TITLE_X_WIDTH", Some(3), Some(7)));
-        assert_ne!(base, compute_finding_id("TITLE_Y", Some(4), Some(7)));
-        assert_ne!(base, compute_finding_id("TITLE_Y", Some(3), Some(8)));
-        assert_ne!(base, compute_finding_id("TITLE_Y", None, None));
     }
 }

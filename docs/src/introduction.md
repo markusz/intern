@@ -17,7 +17,7 @@ $ intern check quarterly.pptx
   Slide  Rule                  Element   Message
   ─────────────────────────────────────────────────────────────────────
   2      TITLE_Y               Title 2   title is 34.2px lower than on most slides
-  3      BODY_FONT_SIZE        Body      body font size 18pt, expected 24pt
+  3      FONT_SIZE_VARIETY     -         4 distinct body font sizes (limit: 3)
   4      TITLE_TRAILING_PUNCT  -         title ends with '.' - remove it
   7      DUPLICATE_TITLE       Title 7   same title as slide 2
 

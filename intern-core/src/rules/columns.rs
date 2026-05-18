@@ -174,6 +174,7 @@ mod tests {
         SlideData {
             index: idx,
             elements,
+            units: vec![],
         }
     }
 

@@ -298,6 +298,7 @@ mod tests {
                     }]
                 },
             }],
+            units: vec![],
         }
     }
 
@@ -389,6 +390,7 @@ mod tests {
                     text_color: None,
                     paragraphs: vec![],
                 }],
+                units: vec![],
             },
             SlideData {
                 index: 1,
@@ -407,6 +409,7 @@ mod tests {
                     text_color: None,
                     paragraphs: vec![],
                 }],
+                units: vec![],
             },
         ];
         let v = TitleXWidthRule.check(&slides, &THRESHOLD);

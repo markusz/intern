@@ -1,6 +1,6 @@
 # Rules reference
 
-`intern` ships **30 rules** across four categories. Every rule has a stable id you
+`intern` ships **36 rules** across four categories. Every rule has a stable id you
 can pass to `--rules` or `--disable`, or configure under `[rules.<RULE_ID>]` in
 `.intern.toml`.
 
@@ -9,10 +9,32 @@ can pass to `--rules` or `--disable`, or configure under `[rules.<RULE_ID>]` in
 Geometric checks. All compare positions within a configurable pixel
 [threshold](#threshold).
 
+### Margin consistency (cross-slide)
+
+Groups are treated as single units - only the group's bounding box is considered,
+not its individual children.
+
+| Rule | What it catches | Default threshold |
+|---|---|---|
+| `LEFT_MARGIN` | Slide's leftmost unit is off the typical left margin | 10 px |
+| `RIGHT_MARGIN` | Slide's rightmost unit right edge is off the typical right margin | 10 px |
+| `BOTTOM_MARGIN` | Content extends deeper than the typical bottom margin (overflow only) | 10 px |
+| `TITLE_MARGIN` | Gap between title and nearest content unit differs from the typical gap | 5 px |
+
+### Proximity alignment (per-slide)
+
+| Rule | What it catches | Default threshold |
+|---|---|---|
+| `CLOSE_X` | Two units on the same slide have X positions within threshold - likely misaligned | 5 px |
+| `CLOSE_Y` | Two units on the same slide have Y positions within threshold - likely misaligned | 5 px |
+
+### Layout detection (default off)
+
+These rules require a layout detector to identify columns and grids. The detector
+is unreliable on varied decks; prefer `CLOSE_X` / `CLOSE_Y` instead.
+
 | Rule | What it catches | Default |
 |---|---|---|
-| `TITLE_Y` | Title top edge inconsistent across slides | 2 px |
-| `TITLE_X_WIDTH` | Title left edge or width inconsistent across slides | 2 px |
 | `COLUMN_LEFT_EDGE` | Left-column elements have inconsistent left edges | 2 px |
 | `COLUMN_TOP_EDGE` | Left and right columns don't start at the same Y | 2 px |
 | `COLUMN_RIGHT_LEFT_EDGE` | Right-column elements have inconsistent left edges | 2 px |
@@ -20,6 +42,13 @@ Geometric checks. All compare positions within a configurable pixel
 | `GRID_V_SPACING` | Vertical gaps between grid elements are uneven | 2 px |
 | `GRID_ROW_TOP` | Elements in the same grid row have misaligned top edges | 2 px |
 | `GRID_COL_LEFT` | Elements in the same grid column have misaligned left edges | 2 px |
+
+### Other alignment
+
+| Rule | What it catches | Default |
+|---|---|---|
+| `TITLE_Y` | Title top edge inconsistent across slides | 2 px |
+| `TITLE_X_WIDTH` | Title left edge or width inconsistent across slides | 2 px |
 | `TEXT_ELEMENT_OVERLAP` | Two text-bearing elements on the same slide have overlapping rects | - |
 | `ELEMENT_OVERFLOW` | Element extends outside the slide bounds | - |
 
@@ -28,7 +57,7 @@ Geometric checks. All compare positions within a configurable pixel
 | Rule | What it catches | Default |
 |---|---|---|
 | `TITLE_FONT_SIZE` | Title font size differs from the majority | - |
-| `BODY_FONT_SIZE` | Body font size differs from the majority across slides | - |
+| `FONT_SIZE_VARIETY` | Too many distinct body font sizes across the deck | 3 sizes |
 | `BODY_FONT_FAMILY` | Body font family differs from the majority across slides | - |
 | `BODY_TEXT_COLOR` | Body text color differs from the majority across slides | - |
 | `FONT_VARIETY` | Too many distinct font families across the deck | 4 families |
@@ -54,7 +83,7 @@ Geometric checks. All compare positions within a configurable pixel
 | `TITLE_LENGTH` | Title is too long | 10 words |
 | `TITLE_TRAILING_PUNCT` | Title ends with `.` `!` or `?` | - |
 | `DUPLICATE_TITLE` | Title text is duplicated on another slide | - |
-| `EMPTY_ELEMENT` | Body or textbox element has no text content | - |
+| `EMPTY_TEXTBOX` | Text box has no text content | - |
 | `SLIDE_COUNT` | Deck has too many slides | 20 slides |
 
 > Some rules are **off by default** and run only when switched on with
@@ -72,17 +101,20 @@ problem but leave the wording to you.
 
 ## Threshold
 
-Geometric comparisons use EMU (English Metric Units). The default threshold is
-**2 px ≈ 19,050 EMU** at 96 dpi. Override it per run:
+Geometric comparisons use EMU (English Metric Units). The default threshold for
+most alignment rules is **2 px**. The margin and proximity rules have their own
+defaults (10 px for `LEFT_MARGIN`, `RIGHT_MARGIN`, `BOTTOM_MARGIN`; 5 px for
+`TITLE_MARGIN`, `CLOSE_X`, `CLOSE_Y`). The global `--threshold` flag affects only
+rules that use the 2 px default; per-rule overrides always win:
 
 ```sh
 intern check deck.pptx --threshold 5
 ```
 
-or permanently in `.intern.toml`:
-
 ```toml
-threshold_px = 5
+# in .intern.toml - overrides the per-rule default for that rule only
+[rules.LEFT_MARGIN]
+threshold = 15
 ```
 
 The word- and count-based limits (`TITLE_LENGTH`, `BULLET_LENGTH`, `FONT_VARIETY`,

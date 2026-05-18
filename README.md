@@ -23,7 +23,7 @@ $ intern check quarterly.pptx
   Slide  Rule                  Element  Message
   ────────────────────────────────────────────────────────────────────────────
   2      TITLE_Y               Title 2  title is 34.2px lower than on most slides
-  3      BODY_FONT_SIZE        Body     body font size 18pt, expected 24pt
+  3      FONT_SIZE_VARIETY     -        4 distinct body font sizes (limit: 3)
   4      TITLE_TRAILING_PUNCT  -        title ends with '.' - remove it
   5      ELEMENT_OVERFLOW      Shape 3  element extends outside slide bounds
   6      DOUBLE_SPACE          Body     paragraph contains double spaces
@@ -157,11 +157,10 @@ median title position) either.
 
 ## Rules
 
-30 rules across four categories. Most run by default. Off by default and opted
+36 rules across four categories. Most run by default. Off by default and opted
 into with `enabled = true` under `[rules.<RULE_ID>]`: `SLIDE_COUNT` (slide limit
-too deck-specific), `TITLE_PRESENT`, `BODY_TEXT_COLOR`, `BODY_FONT_SIZE`, and the
-`GRID_*` and `COLUMN_*` rules (unreliable layout detector). Any rule can be turned
-off with `--disable`.
+too deck-specific) and the `GRID_*` and `COLUMN_*` rules (unreliable layout
+detector). Any rule can be turned off with `--disable`.
 
 ### Alignment
 
@@ -184,7 +183,7 @@ off with `--disable`.
 | Rule | What it catches | Default |
 |---|---|---|
 | `TITLE_FONT_SIZE` | Title font size differs from the majority | - |
-| `BODY_FONT_SIZE` | Body font size differs from the majority across slides | - |
+| `FONT_SIZE_VARIETY` | Too many distinct body font sizes across the deck | 3 sizes |
 | `BODY_FONT_FAMILY` | Body font family differs from the majority across slides | - |
 | `BODY_TEXT_COLOR` | Body text color differs from the majority across slides | - |
 | `FONT_VARIETY` | Too many distinct font families across the deck | 4 families |
@@ -210,7 +209,7 @@ off with `--disable`.
 | `TITLE_LENGTH` | Title is too long | 10 words |
 | `TITLE_TRAILING_PUNCT` | Title ends with `.` `!` or `?` | - |
 | `DUPLICATE_TITLE` | Title text is duplicated on another slide | - |
-| `EMPTY_ELEMENT` | Body or textbox element has no text content | - |
+| `EMPTY_TEXTBOX` | Text box has no text content | - |
 | `SLIDE_COUNT` | Deck has too many slides | 20 slides |
 
 The geometric rules, illustrated with diagrams: [RULES.md](RULES.md)

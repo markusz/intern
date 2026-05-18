@@ -59,11 +59,13 @@ fn parse_slide(index: usize, slide_xml: &str) -> Result<SlideData, Error> {
         return Ok(SlideData {
             index,
             elements: vec![],
+            units: vec![],
         });
     };
     Ok(SlideData {
         index,
         elements: walk_shapes(sp_tree, &[]),
+        units: walk_top_level_units(sp_tree),
     })
 }
 
@@ -330,6 +332,60 @@ fn parse_group_transform(grp: &xml::Element) -> Option<GroupTransform> {
 // innermost-first traversal (child -> slide direction).
 fn apply_group_transforms(rect: Rect, transforms: &[GroupTransform]) -> Rect {
     transforms.iter().rev().fold(rect, |r, t| t.apply(r))
+}
+
+/// Top-level positioning units for a slide: non-grouped shapes plus one Group
+/// element per top-level `<p:grpSp>` (holding the group's bounding rect).
+/// Only walks direct children of `node`; does not recurse into groups.
+fn walk_top_level_units(node: &xml::Element) -> Vec<SlideElement> {
+    let mut units = Vec::new();
+    for child in &node.children {
+        match child.tag.as_str() {
+            "sp" => {
+                if let Some(el) = parse_sp(child) {
+                    units.push(el);
+                }
+            }
+            "pic" => {
+                if let Some(el) = parse_pic(child) {
+                    units.push(el);
+                }
+            }
+            "grpSp" => {
+                if let Some(el) = parse_group_element(child) {
+                    units.push(el);
+                }
+            }
+            _ => {}
+        }
+    }
+    units
+}
+
+/// Parses a `<p:grpSp>` into a single Group element whose rect is the group's
+/// bounding box in slide-space. Returns `None` for degenerate groups (zero extent).
+fn parse_group_element(grp: &xml::Element) -> Option<SlideElement> {
+    let cnv_pr = grp.find("nvGrpSpPr")?.find("cNvPr")?;
+    let id: u32 = cnv_pr.attr("id")?.parse().ok()?;
+    let name = cnv_pr.attr("name").unwrap_or("").to_string();
+    let xfrm = grp.find("grpSpPr")?.find("xfrm")?;
+    let x: i64 = xfrm.find("off")?.attr("x")?.parse().ok()?;
+    let y: i64 = xfrm.find("off")?.attr("y")?.parse().ok()?;
+    let w: i64 = xfrm.find("ext")?.attr("cx")?.parse().ok()?;
+    let h: i64 = xfrm.find("ext")?.attr("cy")?.parse().ok()?;
+    if w == 0 || h == 0 {
+        return None;
+    }
+    Some(SlideElement {
+        id,
+        name,
+        kind: ElementKind::Group,
+        rect: Rect { x, y, w, h },
+        font_size: None,
+        font_family: None,
+        text_color: None,
+        paragraphs: vec![],
+    })
 }
 
 fn slide_order(pkg: &Package) -> Vec<String> {
@@ -888,6 +944,88 @@ mod tests {
     }
 
     #[test]
+    fn walk_top_level_units_returns_non_grouped_shapes_and_group_bbox() {
+        // spTree has one plain sp and one grpSp. units should contain both,
+        // but the grpSp should appear as a Group element with the group bbox,
+        // not as its children.
+        let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:sp>
+                    <p:nvSpPr>
+                        <p:cNvPr id="1" name="Box1"/>
+                        <p:cNvSpPr txBox="1"/>
+                        <p:nvPr/>
+                    </p:nvSpPr>
+                    <p:spPr><a:xfrm><a:off x="100" y="200"/><a:ext cx="300" cy="100"/></a:xfrm></p:spPr>
+                </p:sp>
+                <p:grpSp>
+                    <p:nvGrpSpPr>
+                        <p:cNvPr id="10" name="Group 1"/>
+                        <p:cNvGrpSpPr/>
+                        <p:nvPr/>
+                    </p:nvGrpSpPr>
+                    <p:grpSpPr><a:xfrm>
+                        <a:off x="500" y="600"/>
+                        <a:ext cx="800" cy="400"/>
+                        <a:chOff x="500" y="600"/>
+                        <a:chExt cx="800" cy="400"/>
+                    </a:xfrm></p:grpSpPr>
+                    <p:sp>
+                        <p:nvSpPr>
+                            <p:cNvPr id="11" name="InnerShape"/>
+                            <p:cNvSpPr txBox="1"/>
+                            <p:nvPr/>
+                        </p:nvSpPr>
+                        <p:spPr><a:xfrm><a:off x="510" y="610"/><a:ext cx="200" cy="100"/></a:xfrm></p:spPr>
+                    </p:sp>
+                </p:grpSp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let slide = parse_slide(0, slide_xml).unwrap();
+        // elements: sp + inner shape (group children are flattened)
+        assert_eq!(slide.elements.len(), 2);
+        // units: the plain sp + one Group element (not the inner shape)
+        assert_eq!(slide.units.len(), 2);
+        let group = slide.units.iter().find(|e| e.kind == ElementKind::Group);
+        let group = group.expect("expected a Group unit");
+        assert_eq!(group.id, 10);
+        assert_eq!(group.rect.x, 500);
+        assert_eq!(group.rect.y, 600);
+        assert_eq!(group.rect.w, 800);
+        assert_eq!(group.rect.h, 400);
+        // The plain sp should appear in units with its own coords.
+        let plain = slide
+            .units
+            .iter()
+            .find(|e| e.kind != ElementKind::Group)
+            .expect("expected a non-Group unit");
+        assert_eq!(plain.rect.x, 100);
+    }
+
+    #[test]
+    fn walk_top_level_units_skips_degenerate_group() {
+        let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+            <p:cSld><p:spTree>
+                <p:grpSp>
+                    <p:nvGrpSpPr>
+                        <p:cNvPr id="20" name="Degen"/>
+                        <p:cNvGrpSpPr/>
+                        <p:nvPr/>
+                    </p:nvGrpSpPr>
+                    <p:grpSpPr><a:xfrm>
+                        <a:off x="0" y="0"/>
+                        <a:ext cx="0" cy="0"/>
+                        <a:chOff x="0" y="0"/>
+                        <a:chExt cx="100" cy="100"/>
+                    </a:xfrm></p:grpSpPr>
+                </p:grpSp>
+            </p:spTree></p:cSld>
+        </p:sld>"#;
+        let slide = parse_slide(0, slide_xml).unwrap();
+        assert!(slide.units.is_empty(), "degenerate group should be skipped");
+    }
+
+    #[test]
     fn classify_sp_title_by_ph_type() {
         let sp_xml = r#"<p:sp xmlns:p="p">
             <p:nvSpPr>
@@ -1173,12 +1311,12 @@ mod tests {
     #[test]
     fn parse_exclusion_element_named_rules() {
         assert_eq!(
-            parse_exclusion("intern: disable(7) EMPTY_ELEMENT TITLE_Y"),
+            parse_exclusion("intern: disable(7) EMPTY_TEXTBOX TITLE_Y"),
             Some(SlideExclusion {
                 slide: None,
                 elements: vec![ElementExclusion {
                     element_id: 7,
-                    rules: vec!["EMPTY_ELEMENT".to_string(), "TITLE_Y".to_string()],
+                    rules: vec!["EMPTY_TEXTBOX".to_string(), "TITLE_Y".to_string()],
                 }],
             }),
         );
@@ -1187,7 +1325,7 @@ mod tests {
     #[test]
     fn parse_exclusion_element_and_slide_together() {
         let ex =
-            parse_exclusion("intern: disable TITLE_Y\nintern: disable(5) EMPTY_ELEMENT").unwrap();
+            parse_exclusion("intern: disable TITLE_Y\nintern: disable(5) EMPTY_TEXTBOX").unwrap();
         assert_eq!(ex.slide, Some(vec!["TITLE_Y".to_string()]));
         assert_eq!(ex.elements.len(), 1);
         assert_eq!(ex.elements[0].element_id, 5);
@@ -1204,9 +1342,9 @@ mod tests {
         };
         assert!(!ex.suppresses_slide());
         assert!(ex.suppresses_rule_for_slide("TITLE_Y"));
-        assert!(!ex.suppresses_rule_for_slide("EMPTY_ELEMENT"));
-        assert!(ex.suppresses_rule_for_element(3, "EMPTY_ELEMENT"));
-        assert!(!ex.suppresses_rule_for_element(99, "EMPTY_ELEMENT"));
+        assert!(!ex.suppresses_rule_for_slide("EMPTY_TEXTBOX"));
+        assert!(ex.suppresses_rule_for_element(3, "EMPTY_TEXTBOX"));
+        assert!(!ex.suppresses_rule_for_element(99, "EMPTY_TEXTBOX"));
 
         let all = all_slide();
         assert!(all.suppresses_slide());

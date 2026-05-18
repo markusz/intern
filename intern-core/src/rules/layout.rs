@@ -2,7 +2,7 @@ use crate::model::{EMU_PER_PX, ElementKind, Rect, SlideData, SlideElement};
 use crate::rules::{Rule, RuleContext, Severity, Violation, ViolationMessage};
 
 pub struct TitlePresentRule;
-pub struct EmptyElementRule;
+pub struct EmptyTextBoxRule;
 pub struct ElementOverflowRule;
 pub struct TextElementOverlapRule;
 pub struct SlideCountRule {
@@ -30,9 +30,9 @@ impl Rule for TitlePresentRule {
     }
 }
 
-impl Rule for EmptyElementRule {
+impl Rule for EmptyTextBoxRule {
     fn id(&self) -> &'static str {
-        "EMPTY_ELEMENT"
+        "EMPTY_TEXTBOX"
     }
 
     fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
@@ -46,7 +46,7 @@ impl Rule for EmptyElementRule {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
                         element: Some(e.id),
-                        message: ViolationMessage::EmptyElement,
+                        message: ViolationMessage::EmptyTextBox,
                         severity: Severity::Warning,
                         fix: None,
                     });
@@ -225,13 +225,18 @@ mod tests {
     }
 
     fn slide(elements: Vec<SlideElement>) -> SlideData {
-        SlideData { index: 0, elements }
+        SlideData {
+            index: 0,
+            elements,
+            units: vec![],
+        }
     }
 
     fn slide_n(idx: usize, elements: Vec<SlideElement>) -> SlideData {
         SlideData {
             index: idx,
             elements,
+            units: vec![],
         }
     }
 
@@ -284,32 +289,32 @@ mod tests {
     #[test]
     fn empty_element_clean() {
         let s = slide(vec![body("B1", vec!["Some text"])]);
-        assert!(EmptyElementRule.check(&[s], &T).is_empty());
+        assert!(EmptyTextBoxRule.check(&[s], &T).is_empty());
     }
 
     #[test]
     fn empty_element_fires_on_empty_body() {
         let s = slide(vec![body("B1", vec![])]);
-        let v = EmptyElementRule.check(&[s], &T);
+        let v = EmptyTextBoxRule.check(&[s], &T);
         assert_eq!(v.len(), 1);
-        assert_eq!(v[0].rule_id, "EMPTY_ELEMENT");
-        assert!(matches!(v[0].message, ViolationMessage::EmptyElement));
+        assert_eq!(v[0].rule_id, "EMPTY_TEXTBOX");
+        assert!(matches!(v[0].message, ViolationMessage::EmptyTextBox));
     }
 
     #[test]
     fn empty_element_skips_title() {
-        // Title with no paragraphs should not fire EMPTY_ELEMENT.
+        // Title with no paragraphs should not fire EMPTY_TEXTBOX.
         let mut t = title("T1");
         t.paragraphs.clear();
         let s = slide(vec![t]);
-        assert!(EmptyElementRule.check(&[s], &T).is_empty());
+        assert!(EmptyTextBoxRule.check(&[s], &T).is_empty());
     }
 
     #[test]
     fn empty_element_skips_autoshape() {
         // An empty decorative autoshape is not a missing-content issue.
         let s = slide(vec![autoshape("Rectangle 1")]);
-        assert!(EmptyElementRule.check(&[s], &T).is_empty());
+        assert!(EmptyTextBoxRule.check(&[s], &T).is_empty());
     }
 
     #[test]

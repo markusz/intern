@@ -4,7 +4,9 @@ use std::hash::Hash;
 use crate::model::{ElementKind, ParagraphKind, SlideData, SlideElement};
 use crate::rules::{Fix, Rule, RuleContext, Severity, Violation, ViolationMessage};
 
-pub struct BodyFontSizeRule;
+pub struct FontSizeVariationRule {
+    pub limit: usize,
+}
 pub struct BodyFontFamilyRule;
 pub struct BodyTextColorRule;
 pub struct DoubleSpaceRule;
@@ -52,45 +54,30 @@ fn mode<T: Eq + Hash + Clone>(values: &[T]) -> Option<T> {
     counts.into_iter().max_by_key(|(_, c)| *c).map(|(v, _)| v)
 }
 
-impl Rule for BodyFontSizeRule {
+impl Rule for FontSizeVariationRule {
     fn id(&self) -> &'static str {
-        "BODY_FONT_SIZE"
+        "FONT_SIZE_VARIETY"
     }
 
     fn check(&self, slides: &[SlideData], _ctx: &RuleContext) -> Vec<Violation> {
-        let es = body_elements(slides);
-        let sized: Vec<(usize, u32, String, u32)> = es
-            .iter()
-            .filter_map(|(idx, e)| e.font_size.map(|sz| (*idx, e.id, e.name.clone(), sz)))
+        let sizes: HashSet<u32> = body_elements(slides)
+            .into_iter()
+            .filter_map(|(_, e)| e.font_size)
             .collect();
-
-        if sized.len() < 2 {
+        if sizes.len() <= self.limit {
             return vec![];
         }
-
-        let sizes: Vec<u32> = sized.iter().map(|(_, _, _, sz)| *sz).collect();
-        // SAFETY: sized.len() >= 2 ensures sizes is non-empty.
-        let expected = mode(&sizes).unwrap();
-
-        sized
-            .iter()
-            .filter(|(_, _, _, sz)| *sz != expected)
-            .map(|(idx, id, name, sz)| Violation {
-                rule_id: self.id(),
-                slide: Some(idx + 1),
-                element: Some(*id),
-                message: ViolationMessage::BodyFontSize {
-                    actual: *sz,
-                    expected,
-                },
-                severity: Severity::Warning,
-                fix: Some(Fix::SetFontSize {
-                    slide_idx: *idx,
-                    element_name: name.clone(),
-                    size: expected,
-                }),
-            })
-            .collect()
+        vec![Violation {
+            rule_id: self.id(),
+            slide: None,
+            element: None,
+            message: ViolationMessage::FontSizeVariation {
+                count: sizes.len(),
+                limit: self.limit,
+            },
+            severity: Severity::Warning,
+            fix: None,
+        }]
     }
 }
 
@@ -577,56 +564,88 @@ mod tests {
         SlideData {
             index: idx,
             elements,
+            units: vec![],
         }
     }
 
     #[test]
-    fn body_font_size_clean() {
+    fn font_size_variety_clean_within_limit() {
         let slides = vec![
             slide(0, vec![body("B1", Some(2_400), None)]),
-            slide(1, vec![body("B1", Some(2_400), None)]),
+            slide(1, vec![body("B1", Some(1_800), None)]),
+            slide(2, vec![body("B1", Some(2_000), None)]),
         ];
-        assert!(BodyFontSizeRule.check(&slides, &T).is_empty());
+        assert!(
+            FontSizeVariationRule { limit: 3 }
+                .check(&slides, &T)
+                .is_empty()
+        );
     }
 
     #[test]
-    fn body_font_size_fires_on_outlier() {
+    fn font_size_variety_fires_over_limit() {
         let slides = vec![
             slide(0, vec![body("B1", Some(2_400), None)]),
-            slide(1, vec![body("B1", Some(2_400), None)]),
-            slide(2, vec![body("B1", Some(3_200), None)]), // outlier
+            slide(1, vec![body("B1", Some(1_800), None)]),
+            slide(2, vec![body("B1", Some(2_000), None)]),
+            slide(3, vec![body("B1", Some(1_400), None)]),
         ];
-        let v = BodyFontSizeRule.check(&slides, &T);
+        let v = FontSizeVariationRule { limit: 3 }.check(&slides, &T);
         assert_eq!(v.len(), 1);
-        assert_eq!(v[0].slide, Some(3));
+        assert!(v[0].slide.is_none());
         assert!(matches!(
             v[0].message,
-            ViolationMessage::BodyFontSize {
-                actual: 3200,
-                expected: 2400
-            }
+            ViolationMessage::FontSizeVariation { count: 4, limit: 3 }
         ));
-        assert!(v[0].fix.is_some());
+        assert!(v[0].fix.is_none());
     }
 
     #[test]
-    fn body_font_size_skips_elements_without_size() {
+    fn font_size_variety_skips_elements_without_size() {
         let slides = vec![
             slide(0, vec![body("B1", None, None)]),
             slide(1, vec![body("B1", None, None)]),
+            slide(2, vec![body("B1", None, None)]),
+            slide(3, vec![body("B1", None, None)]),
         ];
-        assert!(BodyFontSizeRule.check(&slides, &T).is_empty());
+        assert!(
+            FontSizeVariationRule { limit: 3 }
+                .check(&slides, &T)
+                .is_empty()
+        );
     }
 
     #[test]
-    fn body_font_size_ignores_title_elements() {
-        let mut e = body("T", Some(4_400), None);
-        e.kind = ElementKind::Title;
+    fn font_size_variety_ignores_title_elements() {
+        let mut title = body("T", Some(4_400), None);
+        title.kind = ElementKind::Title;
         let slides = vec![
-            slide(0, vec![e.clone(), body("B1", Some(2_400), None)]),
-            slide(1, vec![e.clone(), body("B1", Some(2_400), None)]),
+            slide(0, vec![title.clone(), body("B1", Some(2_400), None)]),
+            slide(1, vec![title.clone(), body("B1", Some(1_800), None)]),
+            slide(2, vec![title.clone(), body("B1", Some(2_000), None)]),
+            slide(3, vec![title.clone(), body("B1", Some(1_400), None)]),
         ];
-        assert!(BodyFontSizeRule.check(&slides, &T).is_empty());
+        // Title's 4400 must not be counted; only 4 body sizes, which fires.
+        let v = FontSizeVariationRule { limit: 3 }.check(&slides, &T);
+        assert_eq!(v.len(), 1);
+        assert!(matches!(
+            v[0].message,
+            ViolationMessage::FontSizeVariation { count: 4, .. }
+        ));
+    }
+
+    #[test]
+    fn font_size_variety_deduplicates_same_size() {
+        // Same size on multiple slides counts as one distinct size.
+        let slides = vec![
+            slide(0, vec![body("B1", Some(2_400), None)]),
+            slide(1, vec![body("B1", Some(2_400), None)]),
+        ];
+        assert!(
+            FontSizeVariationRule { limit: 3 }
+                .check(&slides, &T)
+                .is_empty()
+        );
     }
 
     #[test]

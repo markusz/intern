@@ -29,6 +29,7 @@ pub struct RuleTable {
     pub max_families: Option<usize>,
     pub max_colors: Option<usize>,
     pub max_slides: Option<usize>,
+    pub max_sizes: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -58,6 +59,7 @@ impl Config {
             font_families: self.rule_limit("FONT_VARIETY", |t| t.max_families, d.font_families),
             text_colors: self.rule_limit("COLOR_VARIETY", |t| t.max_colors, d.text_colors),
             slide_count: self.rule_limit("SLIDE_COUNT", |t| t.max_slides, d.slide_count),
+            font_sizes: self.rule_limit("FONT_SIZE_VARIETY", |t| t.max_sizes, d.font_sizes),
         }
     }
 

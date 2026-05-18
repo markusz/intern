@@ -183,7 +183,11 @@ mod tests {
     }
 
     fn slide(elements: Vec<SlideElement>) -> SlideData {
-        SlideData { index: 0, elements }
+        SlideData {
+            index: 0,
+            elements,
+            units: vec![],
+        }
     }
 
     #[test]

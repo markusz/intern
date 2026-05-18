@@ -81,7 +81,7 @@ the element id (the `<p:cNvPr id="...">` attribute - shown as **Id** in the tabl
 output) in parentheses:
 
 ```text
-intern: disable(42) EMPTY_ELEMENT
+intern: disable(42) EMPTY_TEXTBOX
 ```
 
 Omit the rule list to suppress every rule for that element:
@@ -94,18 +94,10 @@ Both syntaxes can appear on the same line as a slide-level directive:
 
 ```text
 intern: disable TITLE_Y
-intern: disable(42) EMPTY_ELEMENT
+intern: disable(42) EMPTY_TEXTBOX
 ```
 
 Multiple lines in the same slide's speaker notes are all processed independently.
-
-### Finding IDs
-
-Every finding carries a stable 8-character hex identifier (`FID`) derived from
-the rule id, slide number, and element id. The id is shown in the **FID** column
-of the table output, inline in text output (`[RULE_ID:fid]`), and in the
-`finding_id` field of JSON output. The id is stable across runs as long as the
-element is not moved to a different slide or replaced with a different shape.
 
 ## Use in CI
 

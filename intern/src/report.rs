@@ -85,16 +85,16 @@ fn render_table(violations: &[Finding], group_by: GroupBy) -> String {
         .set_content_arrangement(ContentArrangement::Dynamic);
     match group_by {
         GroupBy::Slide => table.set_header(vec![
-            "Slide", "Rule", "Type", "Position", "Id", "FID", "Text", "Message",
+            "Slide", "Rule", "Type", "Position", "Id", "Text", "Message",
         ]),
         GroupBy::Rule => table.set_header(vec![
-            "Rule", "Slide", "Type", "Position", "Id", "FID", "Text", "Message",
+            "Rule", "Slide", "Type", "Position", "Id", "Text", "Message",
         ]),
     };
 
     // Cap variable-width columns so the table stays readable.
-    // SAFETY: the header always has 8 columns, so these indices always exist.
-    for (col, width) in [(2, 12), (3, 16), (4, 6), (5, 10), (6, 50), (7, 52)] {
+    // SAFETY: the header always has 7 columns, so these indices always exist.
+    for (col, width) in [(2, 12), (3, 16), (4, 6), (5, 50), (6, 52)] {
         table
             .column_mut(col)
             .unwrap()
@@ -108,7 +108,7 @@ fn render_table(violations: &[Finding], group_by: GroupBy) -> String {
             GroupBy::Rule => v.rule_id.to_string(),
         };
         if current_group.as_deref() != Some(group_key.as_str()) && current_group.is_some() {
-            table.add_row(vec![""; 8]);
+            table.add_row(vec![""; 7]);
         }
         current_group = Some(group_key);
 
@@ -128,26 +128,12 @@ fn render_table(violations: &[Finding], group_by: GroupBy) -> String {
         let text = v.excerpt.clone().unwrap_or_else(|| "-".to_string());
         let message = v.message.to_string();
         match group_by {
-            GroupBy::Slide => table.add_row(vec![
-                &slide,
-                v.rule_id,
-                &kind,
-                &pos,
-                &eid,
-                v.finding_id.as_str(),
-                &text,
-                &message,
-            ]),
-            GroupBy::Rule => table.add_row(vec![
-                v.rule_id,
-                &slide,
-                &kind,
-                &pos,
-                &eid,
-                v.finding_id.as_str(),
-                &text,
-                &message,
-            ]),
+            GroupBy::Slide => {
+                table.add_row(vec![&slide, v.rule_id, &kind, &pos, &eid, &text, &message])
+            }
+            GroupBy::Rule => {
+                table.add_row(vec![v.rule_id, &slide, &kind, &pos, &eid, &text, &message])
+            }
         };
     }
 
@@ -203,16 +189,15 @@ fn render_text_by_slide(violations: &[Finding]) -> String {
             Some(el) => {
                 let _ = writeln!(
                     out,
-                    "  [{}:{}] {}{} - {}",
+                    "  [{}] {}{} - {}",
                     v.rule_id,
-                    v.finding_id,
                     el,
                     excerpt_suffix(v),
                     v.message
                 );
             }
             None => {
-                let _ = writeln!(out, "  [{}:{}] {}", v.rule_id, v.finding_id, v.message);
+                let _ = writeln!(out, "  [{}] {}", v.rule_id, v.message);
             }
         }
     }
@@ -237,16 +222,10 @@ fn render_text_by_rule(violations: &[Finding]) -> String {
             .unwrap_or_else(|| "presentation".to_string());
         match element_inline(v) {
             Some(el) => {
-                let _ = writeln!(
-                    out,
-                    "  {loc} - {el}{} - {} ({})",
-                    excerpt_suffix(v),
-                    v.message,
-                    v.finding_id
-                );
+                let _ = writeln!(out, "  {loc} - {el}{} - {}", excerpt_suffix(v), v.message);
             }
             None => {
-                let _ = writeln!(out, "  {loc} - {} ({})", v.message, v.finding_id);
+                let _ = writeln!(out, "  {loc} - {}", v.message);
             }
         }
     }
@@ -273,7 +252,6 @@ fn summary(violations: &[Finding]) -> String {
 
 #[derive(Serialize)]
 struct JsonViolation<'a> {
-    finding_id: &'a str,
     rule_id: &'a str,
     slide: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -290,7 +268,6 @@ struct JsonViolation<'a> {
 
 fn json_violation(v: &Finding) -> JsonViolation<'_> {
     JsonViolation {
-        finding_id: &v.finding_id,
         rule_id: v.rule_id,
         slide: v.slide,
         element_type: v.element_kind.as_deref(),
@@ -337,7 +314,6 @@ mod tests {
             element_kind: None,
             element_position: None,
             element_id: None,
-            finding_id: String::new(),
         }
     }
 
@@ -404,7 +380,7 @@ mod tests {
         )]);
         let out = render(&r, GroupBy::Slide, OutputFormat::Text);
         assert!(out.contains("Slide 3:"), "{out}");
-        assert!(out.contains("[TITLE_PRESENT:"), "{out}");
+        assert!(out.contains("[TITLE_PRESENT]"), "{out}");
     }
 
     #[test]
@@ -419,16 +395,6 @@ mod tests {
     }
 
     #[test]
-    fn table_shows_fid_column_header() {
-        let r = results(vec![(
-            "deck.pptx",
-            vec![finding("TITLE_PRESENT", Some(1), Severity::Error)],
-        )]);
-        let out = render(&r, GroupBy::Slide, OutputFormat::Table);
-        assert!(out.contains("FID"), "{out}");
-    }
-
-    #[test]
     fn json_nests_violations_under_files() {
         let r = results(vec![(
             "deck.pptx",
@@ -439,7 +405,6 @@ mod tests {
         assert!(out.contains("\"path\": \"deck.pptx\""), "{out}");
         assert!(out.contains("\"rule_id\": \"TITLE_PRESENT\""), "{out}");
         assert!(out.contains("\"severity\": \"error\""), "{out}");
-        assert!(out.contains("\"finding_id\""), "{out}");
     }
 
     #[test]

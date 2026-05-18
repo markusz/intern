@@ -263,6 +263,7 @@ mod tests {
                 img("BL", x0, y0 + h + row_gap),
                 img("BR", x0 + w + h_gap, y0 + h + row_gap),
             ],
+            units: vec![],
         }
     }
 
@@ -289,6 +290,7 @@ mod tests {
                     1_500_000 + 800_000 + 200_000,
                 ), // gap=200k
             ],
+            units: vec![],
         };
         let v = GridHSpacingRule.check(&[s], &THRESHOLD);
         assert!(
@@ -345,6 +347,7 @@ mod tests {
                 img("BL", 500_000, 1_500_000 + h + 200_000), // gap=200k
                 img("BR", 500_000 + w + col_gap, 1_500_000 + h + 400_000), // gap=400k
             ],
+            units: vec![],
         };
         let v = GridVSpacingRule.check(&[s], &THRESHOLD);
         assert!(!v.is_empty(), "expected GRID_V_SPACING violation");
@@ -363,6 +366,7 @@ mod tests {
                 img("BL", 500_000 + skew, 1_500_000 + h + gap), // col 0 bottom shifted right
                 img("BR", 500_000 + w + gap, 1_500_000 + h + gap),
             ],
+            units: vec![],
         };
         let v = GridColLeftRule.check(&[s], &THRESHOLD);
         assert!(!v.is_empty(), "expected GRID_COL_LEFT violation");

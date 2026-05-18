@@ -33,6 +33,8 @@ pub enum ElementKind {
     /// A non-text-box autoshape (rectangle, callout, ...); may still carry text.
     Autoshape,
     Image,
+    /// A `<p:grpSp>` group. Only appears in `SlideData::units`; never in `elements`.
+    Group,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,6 +61,7 @@ impl std::fmt::Display for ElementKind {
             Self::TextBox => "TextBox",
             Self::Autoshape => "Autoshape",
             Self::Image => "Image",
+            Self::Group => "Group",
         };
         write!(f, "{s}")
     }
@@ -84,7 +87,13 @@ pub struct SlideElement {
 #[derive(Debug, Clone)]
 pub struct SlideData {
     pub index: usize, // 0-based
+    /// All leaf elements in document order: Title, Body, TextBox, Autoshape, Image.
+    /// Used by text, font, and structural rules.
     pub elements: Vec<SlideElement>,
+    /// Top-level positioning units: non-grouped leaf elements plus one Group element
+    /// per top-level `<p:grpSp>` (holding the group's bounding rect). Used by
+    /// alignment and margin rules. Grouped leaf elements do NOT appear here.
+    pub units: Vec<SlideElement>,
 }
 
 /// A parsed presentation: its slides plus the deck's actual slide dimensions
