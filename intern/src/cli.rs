@@ -28,6 +28,8 @@ pub enum Command {
     Check(CheckArgs),
     /// Fix violations in place, backing up each file to <file>.bak
     Fix(FixArgs),
+    /// Add an intern: disable directive to a slide's speaker notes
+    Ignore(IgnoreArgs),
 }
 
 #[derive(Args, Debug)]
@@ -86,6 +88,21 @@ pub struct FixArgs {
     /// Print what would change without writing
     #[arg(long)]
     pub dry_run: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct IgnoreArgs {
+    /// The presentation file to modify
+    pub file: PathBuf,
+
+    /// Slide number (1-based)
+    pub slide: usize,
+
+    /// Element id (the id shown in the violation table)
+    pub element: u32,
+
+    /// Rule ID to suppress (e.g. EMPTY_TEXTBOX)
+    pub rule: String,
 }
 
 #[derive(ValueEnum, Clone, Debug, PartialEq)]

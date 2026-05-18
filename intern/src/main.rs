@@ -2,6 +2,7 @@ mod analyze;
 mod cli;
 mod config;
 mod fix;
+mod ignore;
 mod input;
 mod report;
 mod ruleset;
@@ -20,6 +21,7 @@ fn main() -> miette::Result<()> {
     match cli.command {
         Some(Command::Check(args)) => run_check(args, cfg),
         Some(Command::Fix(args)) => fix::run(args, cfg),
+        Some(Command::Ignore(args)) => ignore::run(args),
         None => run_check(cli.check, cfg),
     }
 }

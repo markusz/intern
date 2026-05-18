@@ -406,7 +406,7 @@ fn slide_order(pkg: &Package) -> Vec<String> {
 // path. Relationship-id order is creation order, not display order, so a reordered deck
 // would otherwise report the wrong slide numbers - only fall back to rId order when the
 // sldIdLst is unavailable.
-fn resolve_slide_order(presentation_xml: Option<&str>, rels_xml: &str) -> Vec<String> {
+pub(crate) fn resolve_slide_order(presentation_xml: Option<&str>, rels_xml: &str) -> Vec<String> {
     let targets = slide_rel_targets(rels_xml);
     if targets.is_empty() {
         return vec![];
@@ -435,7 +435,7 @@ fn rel_id_num(rid: &str) -> Option<u32> {
 }
 
 // Maps each slide relationship id (e.g. "rId2") to its resolved part path.
-fn slide_rel_targets(rels_xml: &str) -> HashMap<String, String> {
+pub(crate) fn slide_rel_targets(rels_xml: &str) -> HashMap<String, String> {
     let Ok(root) = xml::Element::parse(rels_xml) else {
         return HashMap::new();
     };
@@ -460,7 +460,7 @@ fn slide_rel_targets(rels_xml: &str) -> HashMap<String, String> {
 }
 
 // Reads the ordered relationship ids from `<p:sldIdLst>`.
-fn sldid_order(presentation_xml: &str) -> Vec<String> {
+pub(crate) fn sldid_order(presentation_xml: &str) -> Vec<String> {
     let Ok(root) = xml::Element::parse(presentation_xml) else {
         return vec![];
     };
@@ -574,14 +574,14 @@ fn slide_notes(pkg: &Package, slide_path: &str) -> String {
 
 // Maps "ppt/slides/slideN.xml" to its relationship part
 // "ppt/slides/_rels/slideN.xml.rels".
-fn rels_path_for(slide_path: &str) -> Option<String> {
+pub(crate) fn rels_path_for(slide_path: &str) -> Option<String> {
     let (dir, file) = slide_path.rsplit_once('/')?;
     Some(format!("{dir}/_rels/{file}.rels"))
 }
 
 // Finds the notesSlide relationship target in a slide's .rels XML, resolved to a
 // package-absolute part path.
-fn notes_target(rels_xml: &str) -> Option<String> {
+pub(crate) fn notes_target(rels_xml: &str) -> Option<String> {
     let root = xml::Element::parse(rels_xml).ok()?;
     let target = root
         .find_all("Relationship")
@@ -597,7 +597,7 @@ fn notes_target(rels_xml: &str) -> Option<String> {
 
 // Resolves a relationship target (which may contain `../`) against the part's
 // directory into a package-absolute path.
-fn resolve_part_path(base_dir: &str, target: &str) -> String {
+pub(crate) fn resolve_part_path(base_dir: &str, target: &str) -> String {
     if let Some(stripped) = target.strip_prefix('/') {
         return stripped.to_string();
     }

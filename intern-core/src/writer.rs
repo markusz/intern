@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Read, Seek, Write};
 use std::str::from_utf8;
 
 use quick_xml::events::{BytesStart, BytesText, Event};
@@ -10,7 +10,156 @@ use zip::ZipArchive;
 use zip::write::FileOptions;
 
 use crate::error::Error;
+use crate::reader::{notes_target, rels_path_for, resolve_slide_order};
 use crate::rules::Fix;
+
+/// Append an `intern: disable(element_id) rule_id` directive to the speaker notes of
+/// the given slide (0-based index), writing the file in-place and backing up to `<path>.bak`.
+pub fn append_notes_directive(
+    path: &str,
+    slide_idx: usize,
+    element_id: u32,
+    rule_id: &str,
+) -> Result<(), Error> {
+    let bak = format!("{path}.bak");
+    fs::copy(path, &bak).map_err(|e| Error::Write {
+        path: path.to_owned(),
+        message: format!("cannot create backup: {e}"),
+    })?;
+    let result = do_append_notes_directive(path, slide_idx, element_id, rule_id);
+    if result.is_err() {
+        let _ = fs::copy(&bak, path);
+    }
+    result
+}
+
+fn do_append_notes_directive(
+    path: &str,
+    slide_idx: usize,
+    element_id: u32,
+    rule_id: &str,
+) -> Result<(), Error> {
+    let werr = |msg: String| Error::Write {
+        path: path.to_owned(),
+        message: msg,
+    };
+    let data = fs::read(path).map_err(|e| Error::Open {
+        path: path.to_owned(),
+        message: e.to_string(),
+    })?;
+    let mut archive = ZipArchive::new(Cursor::new(data.as_slice())).map_err(|e| Error::Open {
+        path: path.to_owned(),
+        message: e.to_string(),
+    })?;
+
+    let slide_path = slide_path_at(&mut archive, slide_idx)
+        .ok_or_else(|| werr(format!("slide {} not found", slide_idx + 1)))?;
+    let notes_path = notes_path_for_slide(&mut archive, &slide_path).ok_or_else(|| {
+        werr(format!(
+            "slide {} has no speaker notes - add a note in the presentation first",
+            slide_idx + 1
+        ))
+    })?;
+    let notes_xml = read_zip_string(&mut archive, &notes_path)
+        .ok_or_else(|| werr(format!("cannot read notes part '{notes_path}'")))?;
+
+    let directive = format!("intern: disable({element_id}) {rule_id}");
+    let patched = inject_notes_paragraph(&notes_xml, &directive)
+        .ok_or_else(|| werr(format!("no txBody in notes slide '{notes_path}'")))?;
+
+    rewrite_one_part(path, &data, &notes_path, &patched)
+}
+
+fn slide_path_at<R: Read + Seek>(archive: &mut ZipArchive<R>, slide_idx: usize) -> Option<String> {
+    let rels_xml = read_zip_string(archive, "ppt/_rels/presentation.xml.rels")?;
+    let pres_xml = read_zip_string(archive, "ppt/presentation.xml");
+    let order = resolve_slide_order(pres_xml.as_deref(), &rels_xml);
+    if !order.is_empty() {
+        return order.into_iter().nth(slide_idx);
+    }
+    // Fallback: numeric order of slide XML files.
+    let count = archive.len();
+    let mut paths: Vec<String> = Vec::new();
+    for i in 0..count {
+        if let Ok(file) = archive.by_index(i) {
+            let name = file.name().to_owned();
+            if name.starts_with("ppt/slides/slide")
+                && name.ends_with(".xml")
+                && !name.contains("_rels")
+            {
+                paths.push(name);
+            }
+        }
+    }
+    paths.sort_by_key(|p| parse_slide_idx(p).unwrap_or(usize::MAX));
+    paths.into_iter().nth(slide_idx)
+}
+
+fn notes_path_for_slide<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    slide_path: &str,
+) -> Option<String> {
+    let rels_path = rels_path_for(slide_path)?;
+    let rels_xml = read_zip_string(archive, &rels_path)?;
+    notes_target(&rels_xml)
+}
+
+fn read_zip_string<R: Read + Seek>(archive: &mut ZipArchive<R>, name: &str) -> Option<String> {
+    let mut file = archive.by_name(name).ok()?;
+    let mut s = String::new();
+    file.read_to_string(&mut s).ok()?;
+    Some(s)
+}
+
+fn inject_notes_paragraph(notes_xml: &str, directive: &str) -> Option<String> {
+    let paragraph = format!("<a:p><a:r><a:t>{}</a:t></a:r></a:p>", xml_escape(directive));
+    let insert_pos = notes_xml.rfind("</p:txBody>")?;
+    let mut result = String::with_capacity(notes_xml.len() + paragraph.len());
+    result.push_str(&notes_xml[..insert_pos]);
+    result.push_str(&paragraph);
+    result.push_str(&notes_xml[insert_pos..]);
+    Some(result)
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+fn rewrite_one_part(path: &str, data: &[u8], part_name: &str, content: &str) -> Result<(), Error> {
+    let werr = |msg: String| Error::Write {
+        path: path.to_owned(),
+        message: msg,
+    };
+    let mut archive = ZipArchive::new(Cursor::new(data)).map_err(|e| werr(e.to_string()))?;
+    let mut out: Vec<u8> = Vec::with_capacity(data.len());
+    {
+        let mut zip_out = zip::ZipWriter::new(Cursor::new(&mut out));
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).map_err(|e| werr(e.to_string()))?;
+            let name = file.name().to_owned();
+            let options = FileOptions::default().compression_method(file.compression());
+            zip_out
+                .start_file(&name, options)
+                .map_err(|e| werr(e.to_string()))?;
+            if name == part_name {
+                zip_out
+                    .write_all(content.as_bytes())
+                    .map_err(|e| werr(e.to_string()))?;
+            } else {
+                let mut bytes: Vec<u8> = Vec::new();
+                file.read_to_end(&mut bytes)
+                    .map_err(|e| werr(e.to_string()))?;
+                zip_out.write_all(&bytes).map_err(|e| werr(e.to_string()))?;
+            }
+        }
+        zip_out.finish().map_err(|e| werr(e.to_string()))?;
+    }
+    fs::write(path, out).map_err(|e| werr(e.to_string()))
+}
 
 /// Apply a set of fixes to a PPTX file in-place, backing up the original to `<path>.bak`.
 pub fn apply_fixes(path: &str, fixes: &[Fix]) -> Result<(), Error> {
@@ -324,7 +473,7 @@ fn patch_font(e: BytesStart<'_>, fix: &Fix) -> BytesStart<'static> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_ws, parse_slide_idx, patch_slide_xml};
+    use super::{inject_notes_paragraph, normalize_ws, parse_slide_idx, patch_slide_xml};
     use crate::rules::Fix;
 
     #[test]
@@ -415,5 +564,45 @@ mod tests {
         let result = patch_slide_xml(xml, &[&fix]).unwrap();
         // Different shape - text should be untouched.
         assert!(result.contains("hello  world"), "got: {result}");
+    }
+
+    #[test]
+    fn inject_notes_paragraph_appends_before_last_txbody() {
+        let xml = r#"<p:notes>
+  <p:cSld><p:spTree>
+    <p:sp><p:txBody><a:bodyPr/><a:lstStyle/>
+      <a:p><a:r><a:t>existing note</a:t></a:r></a:p>
+    </p:txBody></p:sp>
+  </p:spTree></p:cSld>
+</p:notes>"#;
+        let result = inject_notes_paragraph(xml, "intern: disable(5) EMPTY_TEXTBOX").unwrap();
+        assert!(
+            result.contains("<a:p><a:r><a:t>intern: disable(5) EMPTY_TEXTBOX</a:t></a:r></a:p>"),
+            "directive missing: {result}"
+        );
+        assert!(
+            result.contains("existing note"),
+            "original text lost: {result}"
+        );
+        // New paragraph must appear before the closing txBody tag.
+        let directive_pos = result.find("intern: disable").unwrap();
+        let txbody_close_pos = result.rfind("</p:txBody>").unwrap();
+        assert!(
+            directive_pos < txbody_close_pos,
+            "directive not before </p:txBody>"
+        );
+    }
+
+    #[test]
+    fn inject_notes_paragraph_returns_none_without_txbody() {
+        let xml = "<p:notes><p:cSld/></p:notes>";
+        assert!(inject_notes_paragraph(xml, "intern: disable(1) TITLE_Y").is_none());
+    }
+
+    #[test]
+    fn inject_notes_paragraph_escapes_xml_special_chars() {
+        let xml = r#"<p:notes><p:sp><p:txBody><a:p/></p:txBody></p:sp></p:notes>"#;
+        let result = inject_notes_paragraph(xml, "a & b < c > d").unwrap();
+        assert!(result.contains("a &amp; b &lt; c &gt; d"), "got: {result}");
     }
 }
