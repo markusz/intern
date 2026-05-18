@@ -2,11 +2,18 @@ use intern_core::rules::{self, Rule};
 
 use crate::config::Config;
 
-/// Rules that do not run unless opted in. `SLIDE_COUNT`'s limit is deck-specific;
-/// the `GRID_*` and `COLUMN_*` rules rely on an unreliable layout detector
-/// (to be replaced by the v0.6.0 margin rule). A default-off rule runs only when
-/// its `[rules.X]` table sets `enabled = true`, or it is named in `only` / `--rules`.
+/// Rules that do not run unless opted in. A default-off rule runs only when its
+/// `[rules.X]` table sets `enabled = true`, or it is named in `only` / `--rules`.
+///
+/// - `TITLE_PRESENT`: blank/divider slides legitimately have no title.
+/// - `ALL_CAPS`: common in corporate decks for callouts, KPIs, labels.
+/// - `BODY_TEXT_COLOR`: color varies intentionally; mode-based comparison produces noise.
+/// - `SLIDE_COUNT`: limit is too deck-specific to have a useful default.
+/// - `GRID_*` / `COLUMN_*`: layout detector is unreliable on varied decks.
 const DEFAULT_OFF: &[&str] = &[
+    "TITLE_PRESENT",
+    "ALL_CAPS",
+    "BODY_TEXT_COLOR",
     "SLIDE_COUNT",
     "GRID_H_SPACING",
     "GRID_V_SPACING",

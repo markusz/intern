@@ -157,60 +157,65 @@ median title position) either.
 
 ## Rules
 
-36 rules across four categories. Most run by default. Off by default and opted
-into with `enabled = true` under `[rules.<RULE_ID>]`: `SLIDE_COUNT` (slide limit
-too deck-specific) and the `GRID_*` and `COLUMN_*` rules (unreliable layout
-detector). Any rule can be turned off with `--disable`.
+36 rules across four categories. Rules marked **off** require `enabled = true` in
+`[rules.<RULE_ID>]` or `--rules <ID>` to run. Any on-by-default rule can be
+suppressed with `--disable`.
 
 ### Alignment
 
-| Rule | What it catches | Default |
+| Rule | Status | What it catches |
 |---|---|---|
-| `TITLE_Y` | Title top-edge inconsistent across slides | 2 px |
-| `TITLE_X_WIDTH` | Title left-edge or width inconsistent across slides | 2 px |
-| `COLUMN_LEFT_EDGE` | Left-column elements have inconsistent left edges | 2 px |
-| `COLUMN_TOP_EDGE` | Left and right columns don't start at the same Y | 2 px |
-| `COLUMN_RIGHT_LEFT_EDGE` | Right-column elements have inconsistent left edges | 2 px |
-| `GRID_H_SPACING` | Horizontal gaps between grid elements are uneven | 2 px |
-| `GRID_V_SPACING` | Vertical gaps between grid elements are uneven | 2 px |
-| `GRID_ROW_TOP` | Elements in the same grid row have misaligned top edges | 2 px |
-| `GRID_COL_LEFT` | Elements in the same grid column have misaligned left edges | 2 px |
-| `TEXT_ELEMENT_OVERLAP` | Two text-bearing elements on the same slide have overlapping rects | - |
-| `ELEMENT_OVERFLOW` | Element extends outside the slide bounds | - |
+| `LEFT_MARGIN` | on | Slide's leftmost unit is off the typical left margin |
+| `RIGHT_MARGIN` | on | Slide's rightmost unit right edge is off the typical right margin |
+| `BOTTOM_MARGIN` | on | Content extends deeper than the typical bottom margin |
+| `TITLE_MARGIN` | on | Gap between title and nearest content unit differs from the typical gap |
+| `CLOSE_X` | on | Two units have X positions within threshold - likely misaligned |
+| `CLOSE_Y` | on | Two units have Y positions within threshold - likely misaligned |
+| `TITLE_Y` | on | Title top-edge inconsistent across slides |
+| `TITLE_X_WIDTH` | on | Title left-edge or width inconsistent across slides |
+| `TEXT_ELEMENT_OVERLAP` | on | Two text-bearing elements on the same slide have overlapping rects |
+| `ELEMENT_OVERFLOW` | on | Element extends outside the slide bounds |
+| `COLUMN_LEFT_EDGE` | **off** | Left-column elements have inconsistent left edges |
+| `COLUMN_TOP_EDGE` | **off** | Left and right columns don't start at the same Y |
+| `COLUMN_RIGHT_LEFT_EDGE` | **off** | Right-column elements have inconsistent left edges |
+| `GRID_H_SPACING` | **off** | Horizontal gaps between grid elements are uneven |
+| `GRID_V_SPACING` | **off** | Vertical gaps between grid elements are uneven |
+| `GRID_ROW_TOP` | **off** | Elements in the same grid row have misaligned top edges |
+| `GRID_COL_LEFT` | **off** | Elements in the same grid column have misaligned left edges |
 
 ### Typography
 
-| Rule | What it catches | Default |
+| Rule | Status | What it catches |
 |---|---|---|
-| `TITLE_FONT_SIZE` | Title font size differs from the majority | - |
-| `FONT_SIZE_VARIETY` | Too many distinct body font sizes across the deck | 3 sizes |
-| `BODY_FONT_FAMILY` | Body font family differs from the majority across slides | - |
-| `BODY_TEXT_COLOR` | Body text color differs from the majority across slides | - |
-| `FONT_VARIETY` | Too many distinct font families across the deck | 4 families |
-| `COLOR_VARIETY` | Too many distinct text colors across the deck | 6 colors |
+| `TITLE_FONT_SIZE` | on | Title font size differs from the majority |
+| `FONT_SIZE_VARIETY` | on | Too many distinct body font sizes across the deck |
+| `BODY_FONT_FAMILY` | on | Body font family differs from the majority across slides |
+| `FONT_VARIETY` | on | Too many distinct font families across the deck |
+| `COLOR_VARIETY` | on | Too many distinct text colors across the deck |
+| `BODY_TEXT_COLOR` | **off** | Body text color differs from the majority across slides |
 
 ### Text quality
 
-| Rule | What it catches | Default |
+| Rule | Status | What it catches |
 |---|---|---|
-| `DOUBLE_SPACE` | Paragraph contains two or more consecutive spaces | - |
-| `LEADING_SPACE` | Paragraph starts with whitespace | - |
-| `ALL_CAPS` | Paragraph text is ALL CAPS | - |
-| `REPEATED_WORD` | Two consecutive identical words ("the the") | - |
-| `BULLET_CAPITALIZATION` | Bullets have inconsistent first-letter capitalization | - |
-| `BULLET_PUNCTUATION` | Bullet ending punctuation is inconsistent across the deck | - |
-| `BULLET_LENGTH` | Bullet is too long | 20 words |
+| `DOUBLE_SPACE` | on | Paragraph contains two or more consecutive spaces |
+| `LEADING_SPACE` | on | Paragraph starts with whitespace |
+| `REPEATED_WORD` | on | Two consecutive identical words ("the the") |
+| `BULLET_CAPITALIZATION` | on | Bullets have inconsistent first-letter capitalization |
+| `BULLET_PUNCTUATION` | on | Bullet ending punctuation is inconsistent across the deck |
+| `BULLET_LENGTH` | on | Bullet is too long |
+| `ALL_CAPS` | **off** | Paragraph text is ALL CAPS |
 
 ### Structure
 
-| Rule | What it catches | Default |
+| Rule | Status | What it catches |
 |---|---|---|
-| `TITLE_PRESENT` | Slide has no title element | - |
-| `TITLE_LENGTH` | Title is too long | 10 words |
-| `TITLE_TRAILING_PUNCT` | Title ends with `.` `!` or `?` | - |
-| `DUPLICATE_TITLE` | Title text is duplicated on another slide | - |
-| `EMPTY_TEXTBOX` | Text box has no text content | - |
-| `SLIDE_COUNT` | Deck has too many slides | 20 slides |
+| `TITLE_LENGTH` | on | Title is too long |
+| `TITLE_TRAILING_PUNCT` | on | Title ends with `.` `!` or `?` |
+| `DUPLICATE_TITLE` | on | Title text is duplicated on another slide |
+| `EMPTY_TEXTBOX` | on | Text box has no text content |
+| `TITLE_PRESENT` | **off** | Slide has no title element |
+| `SLIDE_COUNT` | **off** | Deck has too many slides |
 
 The geometric rules, illustrated with diagrams: [RULES.md](RULES.md)
 

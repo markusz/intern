@@ -4,6 +4,10 @@
 can pass to `--rules` or `--disable`, or configure under `[rules.<RULE_ID>]` in
 `.intern.toml`.
 
+Rules are either **on** (run by default) or **off** (must be opted in via
+`enabled = true` in `[rules.<RULE_ID>]` or named in `--rules`). The status is
+shown in the tables below.
+
 ## Alignment
 
 Geometric checks. All compare positions within a configurable pixel
@@ -14,83 +18,89 @@ Geometric checks. All compare positions within a configurable pixel
 Groups are treated as single units - only the group's bounding box is considered,
 not its individual children.
 
-| Rule | What it catches | Default threshold |
-|---|---|---|
-| `LEFT_MARGIN` | Slide's leftmost unit is off the typical left margin | 10 px |
-| `RIGHT_MARGIN` | Slide's rightmost unit right edge is off the typical right margin | 10 px |
-| `BOTTOM_MARGIN` | Content extends deeper than the typical bottom margin (overflow only) | 10 px |
-| `TITLE_MARGIN` | Gap between title and nearest content unit differs from the typical gap | 5 px |
+| Rule | Status | What it catches | Default threshold |
+|---|---|---|---|
+| `LEFT_MARGIN` | on | Slide's leftmost unit is off the typical left margin | 10 px |
+| `RIGHT_MARGIN` | on | Slide's rightmost unit right edge is off the typical right margin | 10 px |
+| `BOTTOM_MARGIN` | on | Content extends deeper than the typical bottom margin (overflow only) | 10 px |
+| `TITLE_MARGIN` | on | Gap between title and nearest content unit differs from the typical gap | 5 px |
 
 ### Proximity alignment (per-slide)
 
-| Rule | What it catches | Default threshold |
-|---|---|---|
-| `CLOSE_X` | Two units on the same slide have X positions within threshold - likely misaligned | 5 px |
-| `CLOSE_Y` | Two units on the same slide have Y positions within threshold - likely misaligned | 5 px |
+| Rule | Status | What it catches | Default threshold |
+|---|---|---|---|
+| `CLOSE_X` | on | Two units on the same slide have X positions within threshold - likely misaligned | 5 px |
+| `CLOSE_Y` | on | Two units on the same slide have Y positions within threshold - likely misaligned | 5 px |
 
-### Layout detection (default off)
+### Layout detection
 
 These rules require a layout detector to identify columns and grids. The detector
 is unreliable on varied decks; prefer `CLOSE_X` / `CLOSE_Y` instead.
 
-| Rule | What it catches | Default |
-|---|---|---|
-| `COLUMN_LEFT_EDGE` | Left-column elements have inconsistent left edges | 2 px |
-| `COLUMN_TOP_EDGE` | Left and right columns don't start at the same Y | 2 px |
-| `COLUMN_RIGHT_LEFT_EDGE` | Right-column elements have inconsistent left edges | 2 px |
-| `GRID_H_SPACING` | Horizontal gaps between grid elements are uneven | 2 px |
-| `GRID_V_SPACING` | Vertical gaps between grid elements are uneven | 2 px |
-| `GRID_ROW_TOP` | Elements in the same grid row have misaligned top edges | 2 px |
-| `GRID_COL_LEFT` | Elements in the same grid column have misaligned left edges | 2 px |
+| Rule | Status | What it catches | Default threshold |
+|---|---|---|---|
+| `COLUMN_LEFT_EDGE` | **off** | Left-column elements have inconsistent left edges | 2 px |
+| `COLUMN_TOP_EDGE` | **off** | Left and right columns don't start at the same Y | 2 px |
+| `COLUMN_RIGHT_LEFT_EDGE` | **off** | Right-column elements have inconsistent left edges | 2 px |
+| `GRID_H_SPACING` | **off** | Horizontal gaps between grid elements are uneven | 2 px |
+| `GRID_V_SPACING` | **off** | Vertical gaps between grid elements are uneven | 2 px |
+| `GRID_ROW_TOP` | **off** | Elements in the same grid row have misaligned top edges | 2 px |
+| `GRID_COL_LEFT` | **off** | Elements in the same grid column have misaligned left edges | 2 px |
 
 ### Other alignment
 
-| Rule | What it catches | Default |
+| Rule | Status | What it catches |
 |---|---|---|
-| `TITLE_Y` | Title top edge inconsistent across slides | 2 px |
-| `TITLE_X_WIDTH` | Title left edge or width inconsistent across slides | 2 px |
-| `TEXT_ELEMENT_OVERLAP` | Two text-bearing elements on the same slide have overlapping rects | - |
-| `ELEMENT_OVERFLOW` | Element extends outside the slide bounds | - |
+| `TITLE_Y` | on | Title top edge inconsistent across slides |
+| `TITLE_X_WIDTH` | on | Title left edge or width inconsistent across slides |
+| `TEXT_ELEMENT_OVERLAP` | on | Two text-bearing elements on the same slide have overlapping rects |
+| `ELEMENT_OVERFLOW` | on | Element extends outside the slide bounds |
 
 ## Typography
 
-| Rule | What it catches | Default |
-|---|---|---|
-| `TITLE_FONT_SIZE` | Title font size differs from the majority | - |
-| `FONT_SIZE_VARIETY` | Too many distinct body font sizes across the deck | 3 sizes |
-| `BODY_FONT_FAMILY` | Body font family differs from the majority across slides | - |
-| `BODY_TEXT_COLOR` | Body text color differs from the majority across slides | - |
-| `FONT_VARIETY` | Too many distinct font families across the deck | 4 families |
-| `COLOR_VARIETY` | Too many distinct text colors across the deck | 6 colors |
+| Rule | Status | What it catches | Limit |
+|---|---|---|---|
+| `TITLE_FONT_SIZE` | on | Title font size differs from the majority | - |
+| `FONT_SIZE_VARIETY` | on | Too many distinct body font sizes across the deck | 3 sizes |
+| `BODY_FONT_FAMILY` | on | Body font family differs from the majority across slides | - |
+| `BODY_TEXT_COLOR` | **off** | Body text color differs from the majority across slides | - |
+| `FONT_VARIETY` | on | Too many distinct font families across the deck | 4 families |
+| `COLOR_VARIETY` | on | Too many distinct text colors across the deck | 6 colors |
+
+> `BODY_TEXT_COLOR` is off by default: color varies intentionally in most decks
+> (branded slides, dark backgrounds, highlighted callouts).
 
 ## Text quality
 
-| Rule | What it catches | Default |
-|---|---|---|
-| `DOUBLE_SPACE` | Paragraph contains two or more consecutive spaces | - |
-| `LEADING_SPACE` | Paragraph starts with whitespace | - |
-| `ALL_CAPS` | Paragraph text is ALL CAPS | - |
-| `REPEATED_WORD` | Two consecutive identical words ("the the") | - |
-| `BULLET_CAPITALIZATION` | Bullets have inconsistent first-letter capitalization | - |
-| `BULLET_PUNCTUATION` | Bullet ending punctuation is inconsistent across the deck | - |
-| `BULLET_LENGTH` | Bullet is too long | 20 words |
+| Rule | Status | What it catches | Limit |
+|---|---|---|---|
+| `DOUBLE_SPACE` | on | Paragraph contains two or more consecutive spaces | - |
+| `LEADING_SPACE` | on | Paragraph starts with whitespace | - |
+| `ALL_CAPS` | **off** | Paragraph text is ALL CAPS | - |
+| `REPEATED_WORD` | on | Two consecutive identical words ("the the") | - |
+| `BULLET_CAPITALIZATION` | on | Bullets have inconsistent first-letter capitalization | - |
+| `BULLET_PUNCTUATION` | on | Bullet ending punctuation is inconsistent across the deck | - |
+| `BULLET_LENGTH` | on | Bullet is too long | 20 words |
+
+> `ALL_CAPS` is off by default: common in corporate decks for KPI labels, callout
+> boxes, and section stamps.
 
 ## Structure
 
-| Rule | What it catches | Default |
-|---|---|---|
-| `TITLE_PRESENT` | Slide has no title element | - |
-| `TITLE_LENGTH` | Title is too long | 10 words |
-| `TITLE_TRAILING_PUNCT` | Title ends with `.` `!` or `?` | - |
-| `DUPLICATE_TITLE` | Title text is duplicated on another slide | - |
-| `EMPTY_TEXTBOX` | Text box has no text content | - |
-| `SLIDE_COUNT` | Deck has too many slides | 20 slides |
+| Rule | Status | What it catches | Limit |
+|---|---|---|---|
+| `TITLE_PRESENT` | **off** | Slide has no title element | - |
+| `TITLE_LENGTH` | on | Title is too long | 10 words |
+| `TITLE_TRAILING_PUNCT` | on | Title ends with `.` `!` or `?` | - |
+| `DUPLICATE_TITLE` | on | Title text is duplicated on another slide | - |
+| `EMPTY_TEXTBOX` | on | Text box has no text content | - |
+| `SLIDE_COUNT` | **off** | Deck has too many slides | 20 slides |
 
-> Some rules are **off by default** and run only when switched on with
-> `enabled = true` in their `[rules.<RULE_ID>]` table (or named in `--rules`):
-> `SLIDE_COUNT` (its 20-slide limit is too deck-specific) and the `GRID_*` and
-> `COLUMN_*` rules (the layout detector is unreliable). Every other rule runs by
-> default.
+> `TITLE_PRESENT` is off by default: section dividers and full-bleed image slides
+> legitimately have no title element.
+>
+> `SLIDE_COUNT` is off by default: the 20-slide limit is too deck-specific to be
+> a useful default.
 
 ## Auto-fixable rules
 
