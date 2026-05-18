@@ -90,7 +90,7 @@ fn render_table(violations: &[Finding], group_by: GroupBy) -> String {
 
     // Cap the element, text, and message columns so the table stays readable.
     // SAFETY: the header always has 5 columns, so indices 2-4 exist.
-    for (col, width) in [(2, 30), (3, 44), (4, 52)] {
+    for (col, width) in [(2, 30), (3, 60), (4, 52)] {
         table
             .column_mut(col)
             .unwrap()

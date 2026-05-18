@@ -1,14 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use ppt_rs::opc::Package;
-use ppt_rs::oxml::slide::TextRun;
-use ppt_rs::oxml::{SlideParser, XmlParser};
 
 use crate::error::Error;
 use crate::model::{
     DEFAULT_SLIDE_HEIGHT_EMU, DEFAULT_SLIDE_WIDTH_EMU, ElementKind, Presentation, Rect, SlideData,
     SlideElement,
 };
+use crate::xml;
 
 pub fn read_presentation(path: &str) -> Result<Presentation, Error> {
     let pkg = Package::open(path).map_err(|e| Error::Open {
@@ -20,10 +19,10 @@ pub fn read_presentation(path: &str) -> Result<Presentation, Error> {
         .iter()
         .enumerate()
         .map(|(idx, slide_path)| {
-            let xml = pkg
+            let slide_xml = pkg
                 .get_part_string(slide_path)
                 .ok_or_else(|| Error::SlideMissing(slide_path.clone()))?;
-            parse_slide(idx, &xml)
+            parse_slide(idx, &slide_xml)
         })
         .collect::<Result<Vec<_>, _>>()?;
     let (slide_width, slide_height) = slide_size(&pkg);
@@ -44,161 +43,177 @@ fn slide_size(pkg: &Package) -> (i64, i64) {
 }
 
 fn parse_slide_size(presentation_xml: &str) -> Option<(i64, i64)> {
-    let root = XmlParser::parse_str(presentation_xml).ok()?;
+    let root = xml::Element::parse(presentation_xml).ok()?;
     let sz = root.find_descendant("sldSz")?;
     let cx: i64 = sz.attr("cx")?.parse().ok()?;
     let cy: i64 = sz.attr("cy")?.parse().ok()?;
     (cx > 0 && cy > 0).then_some((cx, cy))
 }
 
-fn parse_slide(index: usize, xml: &str) -> Result<SlideData, Error> {
-    let parsed = SlideParser::parse(xml).map_err(|e| Error::ParseSlide(e.to_string()))?;
-    let families = parse_font_families(xml);
-    let textboxes = textbox_names(xml);
-    let mut elements: Vec<SlideElement> = parsed
-        .shapes
-        .into_iter()
-        .filter(|s| s.width > 0 && s.height > 0)
-        .map(|s| {
-            let kind = if s.is_title {
-                ElementKind::Title
-            } else if s.is_body {
-                ElementKind::Body
-            } else if textboxes.contains(&s.name) {
-                ElementKind::TextBox
-            } else {
-                ElementKind::Autoshape
-            };
-            let runs: Vec<_> = s.paragraphs.iter().flat_map(|p| p.runs.iter()).collect();
-            let font_size = runs.iter().find_map(|r| r.font_size);
-            let font_family = families.get(&s.name).cloned();
-            let text_color = dominant_color(&runs);
-            let paragraphs = s
-                .paragraphs
-                .iter()
-                .map(|p| p.runs.iter().map(|r| r.text.as_str()).collect::<String>())
-                .filter(|t| !t.trim().is_empty())
-                .collect();
-            SlideElement {
-                name: s.name,
-                kind,
-                rect: Rect {
-                    x: s.x,
-                    y: s.y,
-                    w: s.width,
-                    h: s.height,
-                },
-                font_size,
-                font_family,
-                text_color,
-                paragraphs,
+fn parse_slide(index: usize, slide_xml: &str) -> Result<SlideData, Error> {
+    let root = xml::Element::parse(slide_xml).map_err(|e| Error::ParseSlide(e.to_string()))?;
+    let Some(sp_tree) = root.find_descendant("spTree") else {
+        return Ok(SlideData {
+            index,
+            elements: vec![],
+        });
+    };
+    let mut elements = Vec::new();
+    for child in &sp_tree.children {
+        match child.tag.as_str() {
+            "sp" => {
+                if let Some(el) = parse_sp(child) {
+                    elements.push(el);
+                }
             }
-        })
-        .collect();
-
-    elements.extend(parse_images(xml));
-
+            "pic" => {
+                if let Some(el) = parse_pic(child) {
+                    elements.push(el);
+                }
+            }
+            // grpSp and other container types skipped until group support (phase 2).
+            _ => {}
+        }
+    }
     Ok(SlideData { index, elements })
 }
 
-fn dominant_color(runs: &[&TextRun]) -> Option<String> {
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for run in runs {
-        if let Some(ref c) = run.color {
-            *counts.entry(c.clone()).or_default() += 1;
+fn parse_sp(sp: &xml::Element) -> Option<SlideElement> {
+    let name = sp.find_descendant("cNvPr")?.attr("name")?.to_string();
+    let rect = parse_rect(sp)?;
+    if rect.w <= 0 || rect.h <= 0 {
+        return None;
+    }
+    let kind = classify_sp(sp);
+    let (paragraphs, font_size, font_family, text_color) = parse_text_body(sp);
+    Some(SlideElement {
+        name,
+        kind,
+        rect,
+        font_size,
+        font_family,
+        text_color,
+        paragraphs,
+    })
+}
+
+fn classify_sp(sp: &xml::Element) -> ElementKind {
+    if let Some(ph) = sp.find_descendant("ph") {
+        let ph_type = ph.attr("type").unwrap_or("");
+        if ph_type == "title" || ph_type == "ctrTitle" {
+            return ElementKind::Title;
+        }
+        if ph_type.is_empty() || ph_type == "body" || ph_type == "subTitle" || ph_type == "obj" {
+            return ElementKind::Body;
         }
     }
-    counts.into_iter().max_by_key(|(_, n)| *n).map(|(c, _)| c)
+    // Name-based fallback matching the ppt-rs generator convention.
+    if let Some(name) = sp.find_descendant("cNvPr").and_then(|e| e.attr("name")) {
+        let lower = name.to_lowercase();
+        if lower == "title" || lower.contains("title") {
+            return ElementKind::Title;
+        }
+        if lower == "content" || lower.contains("content") {
+            return ElementKind::Body;
+        }
+    }
+    if sp
+        .find_descendant("cNvSpPr")
+        .and_then(|e| e.attr("txBox"))
+        .is_some_and(|v| v == "1")
+    {
+        return ElementKind::TextBox;
+    }
+    ElementKind::Autoshape
 }
 
-// Returns a map of shape name → dominant font family, skipping theme font references
-// like "+mj-lt" (major Latin) and "+mn-lt" (minor Latin).
-fn parse_font_families(xml: &str) -> HashMap<String, String> {
-    let Ok(root) = XmlParser::parse_str(xml) else {
-        return HashMap::new();
-    };
-    let Some(sp_tree) = root.find_descendant("spTree") else {
-        return HashMap::new();
-    };
-    sp_tree
-        .find_all_descendants("sp")
-        .into_iter()
-        .filter_map(|sp| {
-            let name = sp.find_descendant("cNvPr")?.attr("name")?.to_string();
-            let typeface = sp
-                .find_all_descendants("latin")
-                .into_iter()
-                .filter_map(|e| e.attr("typeface").map(str::to_string))
-                .find(|t| !t.starts_with('+'))?;
-            Some((name, typeface))
-        })
-        .collect()
+fn parse_rect(node: &xml::Element) -> Option<Rect> {
+    let xfrm = node.find_descendant("xfrm")?;
+    let off = xfrm.find("off")?;
+    let ext = xfrm.find("ext")?;
+    let x: i64 = off.attr("x")?.parse().ok()?;
+    let y: i64 = off.attr("y")?.parse().ok()?;
+    let w: i64 = ext.attr("cx")?.parse().ok()?;
+    let h: i64 = ext.attr("cy")?.parse().ok()?;
+    Some(Rect { x, y, w, h })
 }
 
-// Returns the names of every `<p:sp>` that is a genuine text box, i.e. carries
-// `txBox="1"` on its `<p:cNvSpPr>`. Shapes absent from this set are autoshapes.
-fn textbox_names(xml: &str) -> HashSet<String> {
-    let Ok(root) = XmlParser::parse_str(xml) else {
-        return HashSet::new();
+fn parse_text_body(
+    sp: &xml::Element,
+) -> (Vec<String>, Option<u32>, Option<String>, Option<String>) {
+    let Some(tx_body) = sp.find("txBody") else {
+        return (vec![], None, None, None);
     };
-    let Some(sp_tree) = root.find_descendant("spTree") else {
-        return HashSet::new();
-    };
-    sp_tree
-        .find_all_descendants("sp")
+    let mut paragraphs = Vec::new();
+    let mut font_size: Option<u32> = None;
+    let mut font_family: Option<String> = None;
+    let mut color_counts: HashMap<String, usize> = HashMap::new();
+
+    for para in tx_body.find_all("p") {
+        let para_text =
+            collect_para_text(para, &mut font_size, &mut font_family, &mut color_counts);
+        if !para_text.trim().is_empty() {
+            paragraphs.push(para_text);
+        }
+    }
+
+    let text_color = color_counts
         .into_iter()
-        .filter_map(|sp| {
-            let name = sp.find_descendant("cNvPr")?.attr("name")?.to_string();
-            let is_textbox = sp
-                .find_descendant("cNvSpPr")
-                .and_then(|e| e.attr("txBox"))
-                .is_some_and(|v| v == "1");
-            is_textbox.then_some(name)
-        })
-        .collect()
+        .max_by_key(|(_, n)| *n)
+        .map(|(c, _)| c);
+    (paragraphs, font_size, font_family, text_color)
 }
 
-// Parses top-level `<p:pic>` images. Pictures nested inside a `<p:grpSp>` are
-// skipped: their `<a:off>` is in the group's child coordinate space and `intern`
-// does not yet apply group transforms, so their slide position is unknown.
-fn parse_images(xml: &str) -> Vec<SlideElement> {
-    let Ok(root) = XmlParser::parse_str(xml) else {
-        return vec![];
-    };
-    let Some(sp_tree) = root.find_descendant("spTree") else {
-        return vec![];
-    };
+fn collect_para_text(
+    para: &xml::Element,
+    font_size: &mut Option<u32>,
+    font_family: &mut Option<String>,
+    color_counts: &mut HashMap<String, usize>,
+) -> String {
+    let mut text = String::new();
+    for run in para.find_all("r") {
+        if let Some(t) = run.find("t") {
+            text.push_str(&t.text);
+        }
+        let Some(rpr) = run.find("rPr") else {
+            continue;
+        };
+        if font_size.is_none() {
+            *font_size = rpr.attr("sz").and_then(|v| v.parse().ok());
+        }
+        if font_family.is_none() {
+            *font_family = rpr
+                .find("latin")
+                .and_then(|l| l.attr("typeface"))
+                .filter(|t| !t.starts_with('+'))
+                .map(str::to_string);
+        }
+        if let Some(color) = rpr.find_descendant("srgbClr").and_then(|c| c.attr("val")) {
+            *color_counts.entry(color.to_string()).or_default() += 1;
+        }
+    }
+    text
+}
 
-    sp_tree
-        .find_all("pic")
-        .into_iter()
-        .filter_map(|pic| {
-            let name = pic
-                .find_descendant("cNvPr")
-                .and_then(|e| e.attr("name"))
-                .unwrap_or("Picture")
-                .to_string();
-            let xfrm = pic.find_descendant("xfrm")?;
-            let off = xfrm.find("off")?;
-            let ext = xfrm.find("ext")?;
-            let x: i64 = off.attr("x")?.parse().ok()?;
-            let y: i64 = off.attr("y")?.parse().ok()?;
-            let w: i64 = ext.attr("cx")?.parse().ok()?;
-            let h: i64 = ext.attr("cy")?.parse().ok()?;
-            if w <= 0 || h <= 0 {
-                return None;
-            }
-            Some(SlideElement {
-                name,
-                kind: ElementKind::Image,
-                rect: Rect { x, y, w, h },
-                font_size: None,
-                font_family: None,
-                text_color: None,
-                paragraphs: vec![],
-            })
-        })
-        .collect()
+fn parse_pic(pic: &xml::Element) -> Option<SlideElement> {
+    let name = pic
+        .find_descendant("cNvPr")
+        .and_then(|e| e.attr("name"))
+        .unwrap_or("Picture")
+        .to_string();
+    let rect = parse_rect(pic)?;
+    if rect.w <= 0 || rect.h <= 0 {
+        return None;
+    }
+    Some(SlideElement {
+        name,
+        kind: ElementKind::Image,
+        rect,
+        font_size: None,
+        font_family: None,
+        text_color: None,
+        paragraphs: vec![],
+    })
 }
 
 fn slide_order(pkg: &Package) -> Vec<String> {
@@ -249,7 +264,7 @@ fn rel_id_num(rid: &str) -> Option<u32> {
 
 // Maps each slide relationship id (e.g. "rId2") to its resolved part path.
 fn slide_rel_targets(rels_xml: &str) -> HashMap<String, String> {
-    let Ok(root) = XmlParser::parse_str(rels_xml) else {
+    let Ok(root) = xml::Element::parse(rels_xml) else {
         return HashMap::new();
     };
     root.find_all("Relationship")
@@ -274,7 +289,7 @@ fn slide_rel_targets(rels_xml: &str) -> HashMap<String, String> {
 
 // Reads the ordered relationship ids from `<p:sldIdLst>`.
 fn sldid_order(presentation_xml: &str) -> Vec<String> {
-    let Ok(root) = XmlParser::parse_str(presentation_xml) else {
+    let Ok(root) = xml::Element::parse(presentation_xml) else {
         return vec![];
     };
     let Some(lst) = root.find_descendant("sldIdLst") else {
@@ -361,7 +376,7 @@ fn rels_path_for(slide_path: &str) -> Option<String> {
 // Finds the notesSlide relationship target in a slide's .rels XML, resolved to a
 // package-absolute part path.
 fn notes_target(rels_xml: &str) -> Option<String> {
-    let root = XmlParser::parse_str(rels_xml).ok()?;
+    let root = xml::Element::parse(rels_xml).ok()?;
     let target = root
         .find_all("Relationship")
         .into_iter()
@@ -395,7 +410,7 @@ fn resolve_part_path(base_dir: &str, target: &str) -> String {
 
 // Concatenates the text of every paragraph in a notesSlide part, one line each.
 fn extract_notes_text(notes_xml: &str) -> String {
-    let Ok(root) = XmlParser::parse_str(notes_xml) else {
+    let Ok(root) = xml::Element::parse(notes_xml) else {
         return String::new();
     };
     root.find_all_descendants("p")
@@ -549,43 +564,36 @@ mod tests {
     }
 
     #[test]
-    fn parse_images_extracts_picture_geometry() {
-        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
-            <p:cSld><p:spTree>
-                <p:pic>
-                    <p:nvPicPr><p:cNvPr id="4" name="Logo"/></p:nvPicPr>
-                    <p:spPr><a:xfrm><a:off x="100" y="200"/><a:ext cx="300" cy="400"/></a:xfrm></p:spPr>
-                </p:pic>
-            </p:spTree></p:cSld>
-        </p:sld>"#;
-        let imgs = parse_images(xml);
-        assert_eq!(imgs.len(), 1);
-        assert_eq!(imgs[0].name, "Logo");
-        assert_eq!(imgs[0].kind, ElementKind::Image);
-        assert_eq!(imgs[0].rect.x, 100);
-        assert_eq!(imgs[0].rect.y, 200);
-        assert_eq!(imgs[0].rect.w, 300);
-        assert_eq!(imgs[0].rect.h, 400);
+    fn parse_pic_extracts_picture_geometry() {
+        let pic_xml = r#"<p:pic xmlns:p="p" xmlns:a="a">
+            <p:nvPicPr><p:cNvPr id="4" name="Logo"/></p:nvPicPr>
+            <p:spPr><a:xfrm><a:off x="100" y="200"/><a:ext cx="300" cy="400"/></a:xfrm></p:spPr>
+        </p:pic>"#;
+        let pic = xml::Element::parse(pic_xml).unwrap();
+        let el = parse_pic(&pic).unwrap();
+        assert_eq!(el.name, "Logo");
+        assert_eq!(el.kind, ElementKind::Image);
+        assert_eq!(el.rect.x, 100);
+        assert_eq!(el.rect.y, 200);
+        assert_eq!(el.rect.w, 300);
+        assert_eq!(el.rect.h, 400);
     }
 
     #[test]
-    fn parse_images_skips_zero_sized_pictures() {
-        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
-            <p:cSld><p:spTree>
-                <p:pic>
-                    <p:nvPicPr><p:cNvPr name="Empty"/></p:nvPicPr>
-                    <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm></p:spPr>
-                </p:pic>
-            </p:spTree></p:cSld>
-        </p:sld>"#;
-        assert!(parse_images(xml).is_empty());
+    fn parse_pic_skips_zero_sized_pictures() {
+        let pic_xml = r#"<p:pic xmlns:p="p" xmlns:a="a">
+            <p:nvPicPr><p:cNvPr name="Empty"/></p:nvPicPr>
+            <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm></p:spPr>
+        </p:pic>"#;
+        let pic = xml::Element::parse(pic_xml).unwrap();
+        assert!(parse_pic(&pic).is_none());
     }
 
     #[test]
-    fn parse_images_skips_pictures_inside_groups() {
+    fn parse_slide_skips_pictures_inside_groups() {
         // A picture nested in a group carries child-space coordinates; until group
         // transforms are applied it must not be read as a slide-level image.
-        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
+        let slide_xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
             <p:cSld><p:spTree>
                 <p:grpSp>
                     <p:pic>
@@ -595,43 +603,84 @@ mod tests {
                 </p:grpSp>
             </p:spTree></p:cSld>
         </p:sld>"#;
-        assert!(parse_images(xml).is_empty());
+        let slide = parse_slide(0, slide_xml).unwrap();
+        assert!(slide.elements.iter().all(|e| e.kind != ElementKind::Image));
     }
 
     #[test]
-    fn parse_font_families_skips_theme_references() {
-        // The first run uses a theme reference ("+mn-lt"); only the explicit
-        // typeface should be reported.
-        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
-            <p:cSld><p:spTree>
-                <p:sp>
-                    <p:nvSpPr><p:cNvPr name="Body 1"/></p:nvSpPr>
-                    <p:txBody><a:p>
-                        <a:r><a:rPr><a:latin typeface="+mn-lt"/></a:rPr></a:r>
-                        <a:r><a:rPr><a:latin typeface="Calibri"/></a:rPr></a:r>
-                    </a:p></p:txBody>
-                </p:sp>
-            </p:spTree></p:cSld>
-        </p:sld>"#;
-        let fams = parse_font_families(xml);
-        assert_eq!(fams.get("Body 1").map(String::as_str), Some("Calibri"));
+    fn classify_sp_title_by_ph_type() {
+        let sp_xml = r#"<p:sp xmlns:p="p">
+            <p:nvSpPr>
+                <p:cNvPr name="Other"/>
+                <p:nvPr><p:ph type="title"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr><a:xfrm xmlns:a="a"><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm></p:spPr>
+        </p:sp>"#;
+        let sp = xml::Element::parse(sp_xml).unwrap();
+        assert_eq!(classify_sp(&sp), ElementKind::Title);
     }
 
     #[test]
-    fn textbox_names_distinguishes_text_boxes_from_autoshapes() {
-        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a">
-            <p:cSld><p:spTree>
-                <p:sp>
-                    <p:nvSpPr><p:cNvPr name="Real Text Box"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
-                </p:sp>
-                <p:sp>
-                    <p:nvSpPr><p:cNvPr name="Rectangle 3"/><p:cNvSpPr/></p:nvSpPr>
-                </p:sp>
-            </p:spTree></p:cSld>
-        </p:sld>"#;
-        let names = textbox_names(xml);
-        assert!(names.contains("Real Text Box"));
-        assert!(!names.contains("Rectangle 3"));
+    fn classify_sp_title_by_name_fallback() {
+        let sp_xml = r#"<p:sp xmlns:p="p">
+            <p:nvSpPr><p:cNvPr name="Title"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
+            <p:spPr><a:xfrm xmlns:a="a"><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm></p:spPr>
+        </p:sp>"#;
+        let sp = xml::Element::parse(sp_xml).unwrap();
+        assert_eq!(classify_sp(&sp), ElementKind::Title);
+    }
+
+    #[test]
+    fn classify_sp_textbox_when_txbox_and_no_name_match() {
+        let sp_xml = r#"<p:sp xmlns:p="p">
+            <p:nvSpPr><p:cNvPr name="Text Box 5"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr><a:xfrm xmlns:a="a"><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm></p:spPr>
+        </p:sp>"#;
+        let sp = xml::Element::parse(sp_xml).unwrap();
+        assert_eq!(classify_sp(&sp), ElementKind::TextBox);
+    }
+
+    #[test]
+    fn classify_sp_autoshape_without_txbox() {
+        let sp_xml = r#"<p:sp xmlns:p="p">
+            <p:nvSpPr><p:cNvPr name="Rectangle 3"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+            <p:spPr><a:xfrm xmlns:a="a"><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm></p:spPr>
+        </p:sp>"#;
+        let sp = xml::Element::parse(sp_xml).unwrap();
+        assert_eq!(classify_sp(&sp), ElementKind::Autoshape);
+    }
+
+    #[test]
+    fn parse_sp_extracts_text_and_font_size() {
+        let sp_xml = r#"<p:sp xmlns:p="p" xmlns:a="a">
+            <p:nvSpPr><p:cNvPr name="Body 1"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
+            <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr>
+            <p:txBody>
+                <a:p><a:r><a:rPr sz="1800"/><a:t>Hello</a:t></a:r></a:p>
+                <a:p><a:r><a:t>World</a:t></a:r></a:p>
+            </p:txBody>
+        </p:sp>"#;
+        let sp = xml::Element::parse(sp_xml).unwrap();
+        let el = parse_sp(&sp).unwrap();
+        assert_eq!(el.paragraphs, vec!["Hello", "World"]);
+        assert_eq!(el.font_size, Some(1800));
+    }
+
+    #[test]
+    fn parse_sp_skips_font_family_theme_references() {
+        let sp_xml = r#"<p:sp xmlns:p="p" xmlns:a="a">
+            <p:nvSpPr><p:cNvPr name="Body 1"/></p:nvSpPr>
+            <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr>
+            <p:txBody>
+                <a:p>
+                    <a:r><a:rPr><a:latin typeface="+mn-lt"/></a:rPr><a:t>a</a:t></a:r>
+                    <a:r><a:rPr><a:latin typeface="Calibri"/></a:rPr><a:t>b</a:t></a:r>
+                </a:p>
+            </p:txBody>
+        </p:sp>"#;
+        let sp = xml::Element::parse(sp_xml).unwrap();
+        let el = parse_sp(&sp).unwrap();
+        assert_eq!(el.font_family.as_deref(), Some("Calibri"));
     }
 
     #[test]

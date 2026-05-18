@@ -63,11 +63,13 @@ fn drop_contained(slide: &SlideData, content: Vec<usize>) -> Vec<usize> {
 // True when `outer` fully encloses `inner` and is strictly larger - the area check
 // keeps two identical rects from each "containing" the other.
 fn contains(outer: &Rect, inner: &Rect) -> bool {
-    outer.x <= inner.x
+    let unequal_size = outer.w * outer.h > inner.w * inner.h;
+    let contained = outer.x <= inner.x
         && outer.y <= inner.y
         && outer.right() >= inner.right()
-        && outer.bottom() >= inner.bottom()
-        && outer.w * outer.h > inner.w * inner.h
+        && outer.bottom() >= inner.bottom();
+
+    contained && unequal_size
 }
 
 fn try_two_column(slide: &SlideData, indices: &[usize], slide_width: i64) -> Option<SlideLayout> {
@@ -79,6 +81,7 @@ fn try_two_column(slide: &SlideData, indices: &[usize], slide_width: i64) -> Opt
         .copied()
         .filter(|&i| slide.elements[i].rect.cx() < mid)
         .collect();
+
     let right: Vec<usize> = indices
         .iter()
         .copied()

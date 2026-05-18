@@ -11,7 +11,7 @@ use crate::config::Config;
 use crate::ruleset::Selection;
 
 /// Maximum length of the offending-element text snippet shown in reports.
-const EXCERPT_CHARS: usize = 50;
+const EXCERPT_CHARS: usize = 30;
 
 /// A violation plus display context the rules themselves do not carry - currently
 /// a short snippet of the offending element's text. Derefs to the inner
