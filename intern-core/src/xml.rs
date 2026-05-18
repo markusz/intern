@@ -79,17 +79,15 @@ impl Element {
                             .push_str(&text);
                     }
                 }
-                Event::End(_) => {
-                    if stack.len() > 1 {
-                        let finished = stack
-                            .pop()
-                            .ok_or_else(|| ParseError("empty parse stack".into()))?;
-                        stack
-                            .last_mut()
-                            .ok_or_else(|| ParseError("empty parse stack".into()))?
-                            .children
-                            .push(finished);
-                    }
+                Event::End(_) if stack.len() > 1 => {
+                    let finished = stack
+                        .pop()
+                        .ok_or_else(|| ParseError("empty parse stack".into()))?;
+                    stack
+                        .last_mut()
+                        .ok_or_else(|| ParseError("empty parse stack".into()))?
+                        .children
+                        .push(finished);
                 }
                 Event::Eof => break,
                 _ => {}
