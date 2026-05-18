@@ -13,6 +13,8 @@ cargo clippy -- -D warnings
 
 Concise only. No summaries, no "here's what I did", no sign-offs. Say the thing, stop.
 
+Push back when a request has bad ROI - a library limitation that makes something a fragile hack, a feature whose implementation cost outweighs the value, a design that works against the grain of the codebase. Say so plainly and suggest the simpler alternative. Don't be precious about it, but don't silently contort the code either.
+
 ## Code style
 
 - No panicking code unless the error is truly unrecoverable or the invariant is provably safe. In either case add a `// SAFETY:` comment explaining why.
@@ -25,3 +27,4 @@ Concise only. No summaries, no "here's what I did", no sign-offs. Say the thing,
 - Code is read by humans. Avoid complex inline math, clever index tricks, and terse expressions that require mental unwrapping. Prefer extra named variables and intermediate results over one-liners that need a comment to explain them. KISS.
 - No full-path imports in production code (e.g. `std::collections::HashMap::new()` inline, or `use std::a::b::TheActualStruct` buried in a function body). Bring types into scope with `use` at the top of the file. Exception: test code, or when two crates export the same name and disambiguation is unavoidable.
 - No em-dashes anywhere (code, comments, docs, commit messages). Use a plain hyphen `-` instead.
+- Prefer enums over booleans for named state. `is_bullet: bool` should be `kind: ParagraphKind` with `Bullet`/`Plain` variants. Enums are self-documenting, exhaustively matched, and easier to extend.

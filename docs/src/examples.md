@@ -133,7 +133,7 @@ it up:
 
 ```toml
 threshold_px = 3
-disable = ["IMAGE_ASPECT_RATIO"]
+disable = ["ALL_CAPS"]
 
 [rules.TITLE_LENGTH]
 max_words = 8

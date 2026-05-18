@@ -2,10 +2,27 @@ use intern_core::rules::{self, Rule};
 
 use crate::config::Config;
 
-/// Rules that do not run unless opted in - their default threshold is too
-/// deck-specific to be a useful blanket check. A default-off rule runs only when its
+/// Rules that do not run unless opted in. A default-off rule runs only when its
 /// `[rules.X]` table sets `enabled = true`, or it is named in `only` / `--rules`.
-const DEFAULT_OFF: &[&str] = &["SLIDE_COUNT"];
+///
+/// - `TITLE_PRESENT`: blank/divider slides legitimately have no title.
+/// - `ALL_CAPS`: common in corporate decks for callouts, KPIs, labels.
+/// - `BODY_TEXT_COLOR`: color varies intentionally; mode-based comparison produces noise.
+/// - `SLIDE_COUNT`: limit is too deck-specific to have a useful default.
+/// - `GRID_*` / `COLUMN_*`: layout detector is unreliable on varied decks.
+const DEFAULT_OFF: &[&str] = &[
+    "TITLE_PRESENT",
+    "ALL_CAPS",
+    "BODY_TEXT_COLOR",
+    "SLIDE_COUNT",
+    "GRID_H_SPACING",
+    "GRID_V_SPACING",
+    "GRID_ROW_TOP",
+    "GRID_COL_LEFT",
+    "COLUMN_LEFT_EDGE",
+    "COLUMN_TOP_EDGE",
+    "COLUMN_RIGHT_LEFT_EDGE",
+];
 
 fn is_default_off(id: &str) -> bool {
     DEFAULT_OFF.contains(&id)
@@ -207,9 +224,14 @@ mod tests {
     }
 
     #[test]
-    fn default_off_rule_is_excluded_without_opt_in() {
+    fn default_off_rules_are_excluded_without_opt_in() {
         let sel = select(&Config::default(), None, None).unwrap();
-        assert!(sel.rules.iter().all(|r| r.id() != "SLIDE_COUNT"));
+        for id in DEFAULT_OFF {
+            assert!(
+                sel.rules.iter().all(|r| r.id() != *id),
+                "{id} should be off by default"
+            );
+        }
     }
 
     #[test]

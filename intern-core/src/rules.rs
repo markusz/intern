@@ -1,6 +1,7 @@
 pub mod columns;
 pub mod grid;
 pub mod layout;
+pub mod margin;
 pub mod text;
 pub mod title;
 
@@ -142,8 +143,8 @@ pub enum ViolationMessage {
     },
     /// Title font size (in hundredths of a point) differs from the majority.
     TitleFontSize { actual: u32, expected: u32 },
-    /// Body/textbox font size (in hundredths of a point) differs from the majority.
-    BodyFontSize { actual: u32, expected: u32 },
+    /// Deck uses more distinct body font sizes than the limit.
+    FontSizeVariation { count: usize, limit: usize },
     /// Body/textbox font family differs from the majority.
     BodyFontFamily { actual: String, expected: String },
     /// Element rect extends outside the slide bounds.
@@ -152,14 +153,14 @@ pub enum ViolationMessage {
     BodyTextColor { actual: String, expected: String },
     /// Paragraph contains two or more consecutive spaces.
     DoubleSpace,
-    /// Paragraph has leading or trailing whitespace.
-    TrailingSpace,
+    /// Paragraph starts with whitespace.
+    LeadingSpace,
     /// Bullet paragraphs within an element have inconsistent first-letter capitalization.
     BulletCapitalization { expected_uppercase: bool },
     /// Slide has no title element.
     TitleMissing,
     /// Body or textbox element has no text content.
-    EmptyElement,
+    EmptyTextBox,
     /// Paragraph text is ALL CAPS.
     AllCaps,
     /// Bullet ending punctuation is inconsistent with the deck majority.
@@ -180,12 +181,25 @@ pub enum ViolationMessage {
     ColorVariety { count: usize, limit: usize },
     /// Deck has more slides than the limit.
     SlideCount { count: usize, limit: usize },
-    /// Element rect overlaps with another element on the same slide.
+    /// A text-bearing element rect overlaps another text-bearing element on the same slide.
     ElementOverlap { other_element: String },
-    /// Image aspect ratio differs from the deck majority.
-    ImageAspectRatio {
-        actual_ratio: f64,
-        expected_ratio: f64,
+    /// Slide's leftmost unit is further from the typical left margin than the threshold.
+    LeftMarginOff { actual_emu: i64, expected_emu: i64 },
+    /// Slide's rightmost unit right edge is further from the typical right margin than the threshold.
+    RightMarginOff { actual_emu: i64, expected_emu: i64 },
+    /// Slide's deepest unit bottom edge exceeds the typical bottom margin by more than the threshold.
+    BottomMarginOff { actual_emu: i64, expected_emu: i64 },
+    /// Gap between title bottom and nearest content unit differs from the typical gap by more than threshold.
+    TitleGapOff { actual_emu: i64, expected_emu: i64 },
+    /// Two units on the same slide have X positions within threshold of each other but are not aligned.
+    CloseX {
+        diff_emu: i64,
+        other_element: String,
+    },
+    /// Two units on the same slide have Y positions within threshold of each other but are not aligned.
+    CloseY {
+        diff_emu: i64,
+        other_element: String,
     },
 }
 
@@ -221,9 +235,9 @@ impl fmt::Display for ViolationMessage {
             } => {
                 let diff = (*actual_emu - *expected_emu) as f64 / EMU_PER_PX;
                 if diff > 0.0 {
-                    write!(f, "title is {diff:.1}px lower than on most slides")
+                    write!(f, "title {diff:.1}px lower than most slides")
                 } else {
-                    write!(f, "title is {:.1}px higher than on most slides", diff.abs())
+                    write!(f, "title {:.1}px higher than most slides", diff.abs())
                 }
             }
             Self::TitlePositionSize {
@@ -239,56 +253,43 @@ impl fmt::Display for ViolationMessage {
                 }
                 write!(f, "title position/size inconsistent: {}", parts.join(", "))
             }
-            Self::TitleFontSize { actual, expected } => write!(
-                f,
-                "title font size {}pt, expected {}pt",
-                actual / 100,
-                expected / 100,
-            ),
-            Self::BodyFontSize { actual, expected } => write!(
-                f,
-                "body font size {}pt, expected {}pt",
-                actual / 100,
-                expected / 100,
-            ),
-            Self::BodyFontFamily { actual, expected } => {
-                write!(f, "body font '{actual}', expected '{expected}'")
+            Self::TitleFontSize { actual, expected } => {
+                write!(
+                    f,
+                    "title font {}pt (deck: {}pt)",
+                    actual / 100,
+                    expected / 100
+                )
             }
-            Self::ElementOverflow => write!(f, "element extends outside slide bounds"),
+            Self::FontSizeVariation { count, limit } => {
+                write!(f, "{count} distinct body font sizes (limit: {limit})",)
+            }
+            Self::BodyFontFamily { actual, expected } => {
+                write!(f, "font '{actual}' (deck: '{expected}'")
+            }
+            Self::ElementOverflow => write!(f, "outside slide bounds - reposition or resize"),
             Self::BodyTextColor { actual, expected } => {
                 write!(f, "text color #{actual}, most elements use #{expected}")
             }
-            Self::DoubleSpace => write!(f, "paragraph contains double spaces"),
-            Self::TrailingSpace => write!(f, "paragraph has leading or trailing whitespace"),
+            Self::DoubleSpace => write!(f, "double spaces"),
+            Self::LeadingSpace => write!(f, "starts with whitespace"),
             Self::BulletCapitalization { expected_uppercase } => {
                 if *expected_uppercase {
-                    write!(
-                        f,
-                        "bullet starts lowercase; most bullets in this deck start uppercase"
-                    )
+                    write!(f, "starts lowercase; deck uses uppercase")
                 } else {
-                    write!(
-                        f,
-                        "bullet starts uppercase; most bullets in this deck start lowercase"
-                    )
+                    write!(f, "starts uppercase; deck uses lowercase")
                 }
             }
-            Self::TitleMissing => write!(f, "slide has no title element"),
-            Self::EmptyElement => write!(f, "no text content"),
-            Self::AllCaps => write!(f, "text is all caps - use title case or sentence case"),
+            Self::TitleMissing => write!(f, "no title element"),
+            Self::EmptyTextBox => write!(f, "empty text box - use a shape instead"),
+            Self::AllCaps => write!(f, "all caps - use sentence case"),
             Self::BulletPunctuation {
                 expected_punctuation,
             } => {
                 if *expected_punctuation {
-                    write!(
-                        f,
-                        "bullet ends without punctuation; most bullets in this deck end with punctuation"
-                    )
+                    write!(f, "no end punctuation; deck uses punctuation")
                 } else {
-                    write!(
-                        f,
-                        "bullet ends with punctuation; most bullets in this deck end without"
-                    )
+                    write!(f, "ends with punctuation; deck does not")
                 }
             }
             Self::BulletTooLong { word_count, limit } => {
@@ -314,14 +315,59 @@ impl fmt::Display for ViolationMessage {
                 write!(f, "deck has {count} slides (max {limit})")
             }
             Self::ElementOverlap { other_element } => {
-                write!(f, "bounding box overlaps with '{other_element}'")
+                write!(f, "overlaps {other_element}")
             }
-            Self::ImageAspectRatio {
-                actual_ratio,
-                expected_ratio,
+            Self::LeftMarginOff {
+                actual_emu,
+                expected_emu,
             } => write!(
                 f,
-                "image aspect ratio {actual_ratio:.2} differs from majority {expected_ratio:.2}"
+                "left margin {:.1}px (typical {:.1}px)",
+                *actual_emu as f64 / EMU_PER_PX,
+                *expected_emu as f64 / EMU_PER_PX,
+            ),
+            Self::RightMarginOff {
+                actual_emu,
+                expected_emu,
+            } => write!(
+                f,
+                "right edge at {:.1}px (typical {:.1}px)",
+                *actual_emu as f64 / EMU_PER_PX,
+                *expected_emu as f64 / EMU_PER_PX,
+            ),
+            Self::BottomMarginOff {
+                actual_emu,
+                expected_emu,
+            } => write!(
+                f,
+                "content bottom at {:.1}px (typical {:.1}px)",
+                *actual_emu as f64 / EMU_PER_PX,
+                *expected_emu as f64 / EMU_PER_PX,
+            ),
+            Self::TitleGapOff {
+                actual_emu,
+                expected_emu,
+            } => write!(
+                f,
+                "title-to-content gap {:.1}px (typical {:.1}px)",
+                *actual_emu as f64 / EMU_PER_PX,
+                *expected_emu as f64 / EMU_PER_PX,
+            ),
+            Self::CloseX {
+                diff_emu,
+                other_element,
+            } => write!(
+                f,
+                "X position {:.1}px off from {other_element} - likely misaligned",
+                *diff_emu as f64 / EMU_PER_PX,
+            ),
+            Self::CloseY {
+                diff_emu,
+                other_element,
+            } => write!(
+                f,
+                "Y position {:.1}px off from {other_element} - likely misaligned",
+                *diff_emu as f64 / EMU_PER_PX,
             ),
         }
     }
@@ -331,16 +377,32 @@ impl fmt::Display for ViolationMessage {
 pub struct Violation {
     pub rule_id: &'static str,
     pub slide: Option<usize>, // 1-based
-    pub element: Option<String>,
+    pub element: Option<u32>,
     pub message: ViolationMessage,
     pub severity: Severity,
     /// Proposed automatic fix, if one can be determined unambiguously.
     pub fix: Option<Fix>,
 }
 
+/// Deck-wide context handed to every rule's `check`. `threshold` is this rule's
+/// geometric comparison tolerance in EMU; `slide_width` / `slide_height` are the
+/// deck's actual slide dimensions, read from `<p:sldSz>`.
+#[derive(Debug, Clone)]
+pub struct RuleContext {
+    pub threshold: i64,
+    pub slide_width: i64,
+    pub slide_height: i64,
+}
+
 pub trait Rule {
     fn id(&self) -> &'static str;
-    fn check(&self, slides: &[SlideData], threshold: i64) -> Vec<Violation>;
+    fn check(&self, slides: &[SlideData], ctx: &RuleContext) -> Vec<Violation>;
+    /// Per-rule default threshold in pixels, used when the user has not set a
+    /// per-rule threshold and has not changed the global `--threshold` flag.
+    /// Returns `None` to fall back to the global default (2px).
+    fn default_threshold_px(&self) -> Option<u32> {
+        None
+    }
 }
 
 /// Configurable numeric limits for rules that enforce "must be ≤ N" policies.
@@ -350,12 +412,14 @@ pub struct Limits {
     pub title_words: usize,
     /// Maximum words allowed in a single bullet point (default 20).
     pub bullet_words: usize,
-    /// Maximum distinct font families across the deck (default 2).
+    /// Maximum distinct font families across the deck (default 4).
     pub font_families: usize,
-    /// Maximum distinct text colors across the deck (default 3).
+    /// Maximum distinct text colors across the deck (default 6).
     pub text_colors: usize,
     /// Maximum number of slides in the deck (default 20).
     pub slide_count: usize,
+    /// Maximum distinct body font sizes across the deck (default 3).
+    pub font_sizes: usize,
 }
 
 impl Default for Limits {
@@ -363,9 +427,10 @@ impl Default for Limits {
         Self {
             title_words: 10,
             bullet_words: 20,
-            font_families: 2,
-            text_colors: 3,
+            font_families: 4,
+            text_colors: 6,
             slide_count: 20,
+            font_sizes: 3,
         }
     }
 }
@@ -382,11 +447,13 @@ pub fn all_rules(limits: &Limits) -> Vec<Box<dyn Rule>> {
         Box::new(grid::GridVSpacingRule),
         Box::new(grid::GridRowTopRule),
         Box::new(grid::GridColLeftRule),
-        Box::new(text::BodyFontSizeRule),
+        Box::new(text::FontSizeVariationRule {
+            limit: limits.font_sizes,
+        }),
         Box::new(text::BodyFontFamilyRule),
         Box::new(text::BodyTextColorRule),
         Box::new(text::DoubleSpaceRule),
-        Box::new(text::TrailingSpaceRule),
+        Box::new(text::LeadingSpaceRule),
         Box::new(text::BulletCapitalizationRule),
         Box::new(text::AllCapsRule),
         Box::new(text::BulletPunctuationRule),
@@ -394,10 +461,9 @@ pub fn all_rules(limits: &Limits) -> Vec<Box<dyn Rule>> {
             limit: limits.bullet_words,
         }),
         Box::new(layout::TitlePresentRule),
-        Box::new(layout::EmptyElementRule),
+        Box::new(layout::EmptyTextBoxRule),
         Box::new(layout::ElementOverflowRule),
-        Box::new(layout::ElementOverlapRule),
-        Box::new(layout::ImageAspectRatioRule),
+        Box::new(layout::TextElementOverlapRule),
         Box::new(layout::SlideCountRule {
             limit: limits.slide_count,
         }),
@@ -413,6 +479,12 @@ pub fn all_rules(limits: &Limits) -> Vec<Box<dyn Rule>> {
         Box::new(text::ColorVarietyRule {
             limit: limits.text_colors,
         }),
+        Box::new(margin::LeftMarginRule),
+        Box::new(margin::RightMarginRule),
+        Box::new(margin::BottomMarginRule),
+        Box::new(margin::TitleMarginRule),
+        Box::new(margin::CloseXRule),
+        Box::new(margin::CloseYRule),
     ]
 }
 
@@ -451,7 +523,7 @@ mod tests {
             expected_emu: 274_638,
         };
         let s = m.to_string();
-        assert!(s.contains("lower than on most slides"), "{s}");
+        assert!(s.contains("lower than most slides"), "{s}");
     }
 
     #[test]
@@ -469,7 +541,7 @@ mod tests {
             actual: 3600,
             expected: 4400,
         };
-        assert_eq!(m.to_string(), "title font size 36pt, expected 44pt");
+        assert_eq!(m.to_string(), "title font 36pt (deck: 44pt)");
     }
 
     #[test]
@@ -553,12 +625,8 @@ mod tests {
     fn violation_message_display_covers_every_variant() {
         use ViolationMessage::*;
         assert_eq!(
-            BodyFontSize {
-                actual: 1800,
-                expected: 2400
-            }
-            .to_string(),
-            "body font size 18pt, expected 24pt"
+            FontSizeVariation { count: 5, limit: 3 }.to_string(),
+            "5 distinct body font sizes (limit: 3)"
         );
         assert!(
             BodyFontFamily {
@@ -578,10 +646,10 @@ mod tests {
         );
         assert_eq!(
             ElementOverflow.to_string(),
-            "element extends outside slide bounds"
+            "outside slide bounds - reposition or resize"
         );
-        assert_eq!(DoubleSpace.to_string(), "paragraph contains double spaces");
-        assert!(TrailingSpace.to_string().contains("whitespace"));
+        assert_eq!(DoubleSpace.to_string(), "double spaces");
+        assert!(LeadingSpace.to_string().contains("whitespace"));
         assert!(
             BulletCapitalization {
                 expected_uppercase: true
@@ -596,8 +664,11 @@ mod tests {
             .to_string()
             .contains("lowercase")
         );
-        assert_eq!(TitleMissing.to_string(), "slide has no title element");
-        assert_eq!(EmptyElement.to_string(), "no text content");
+        assert_eq!(TitleMissing.to_string(), "no title element");
+        assert_eq!(
+            EmptyTextBox.to_string(),
+            "empty text box - use a shape instead"
+        );
         assert!(AllCaps.to_string().contains("all caps"));
         assert!(
             BulletPunctuation {
@@ -659,14 +730,6 @@ mod tests {
             }
             .to_string()
             .contains("Box 2")
-        );
-        assert!(
-            ImageAspectRatio {
-                actual_ratio: 1.33,
-                expected_ratio: 1.78
-            }
-            .to_string()
-            .contains("1.33")
         );
     }
 }

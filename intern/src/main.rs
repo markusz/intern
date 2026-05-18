@@ -2,6 +2,7 @@ mod analyze;
 mod cli;
 mod config;
 mod fix;
+mod ignore;
 mod input;
 mod report;
 mod ruleset;
@@ -20,6 +21,7 @@ fn main() -> miette::Result<()> {
     match cli.command {
         Some(Command::Check(args)) => run_check(args, cfg),
         Some(Command::Fix(args)) => fix::run(args, cfg),
+        Some(Command::Ignore(args)) => ignore::run(args),
         None => run_check(cli.check, cfg),
     }
 }
@@ -35,7 +37,7 @@ fn run_check(args: CheckArgs, cfg: Config) -> miette::Result<()> {
     }
 
     let files = input::collect_pptx(&args.files)?;
-    let mut results: Vec<(String, Vec<rules::Violation>)> = Vec::new();
+    let mut results: Vec<(String, Vec<analyze::Finding>)> = Vec::new();
     for file in &files {
         let path = file
             .to_str()

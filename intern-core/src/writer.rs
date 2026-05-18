@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Read, Seek, Write};
 use std::str::from_utf8;
 
 use quick_xml::events::{BytesStart, BytesText, Event};
@@ -10,7 +10,325 @@ use zip::ZipArchive;
 use zip::write::FileOptions;
 
 use crate::error::Error;
+use crate::reader::{notes_target, rels_path_for, resolve_slide_order};
 use crate::rules::Fix;
+
+/// Append an `intern: disable` directive to the speaker notes of the given slide
+/// (0-based index), writing the file in-place and backing up to `<path>.bak`.
+///
+/// - `element_id = Some(id)` writes `intern: disable(id) rule_id`
+/// - `element_id = None` writes `intern: disable rule_id`
+pub fn append_notes_directive(
+    path: &str,
+    slide_idx: usize,
+    element_id: Option<u32>,
+    rule_id: &str,
+) -> Result<(), Error> {
+    let bak = format!("{path}.bak");
+    fs::copy(path, &bak).map_err(|e| Error::Write {
+        path: path.to_owned(),
+        message: format!("cannot create backup: {e}"),
+    })?;
+    let result = do_append_notes_directive(path, slide_idx, element_id, rule_id);
+    if result.is_err() {
+        let _ = fs::copy(&bak, path);
+    }
+    result
+}
+
+fn do_append_notes_directive(
+    path: &str,
+    slide_idx: usize,
+    element_id: Option<u32>,
+    rule_id: &str,
+) -> Result<(), Error> {
+    let werr = |msg: String| Error::Write {
+        path: path.to_owned(),
+        message: msg,
+    };
+    let data = fs::read(path).map_err(|e| Error::Open {
+        path: path.to_owned(),
+        message: e.to_string(),
+    })?;
+    let mut archive = ZipArchive::new(Cursor::new(data.as_slice())).map_err(|e| Error::Open {
+        path: path.to_owned(),
+        message: e.to_string(),
+    })?;
+
+    let slide_path = slide_path_at(&mut archive, slide_idx)
+        .ok_or_else(|| werr(format!("slide {} not found", slide_idx + 1)))?;
+    let directive = match element_id {
+        Some(id) => format!("intern: disable({id}) {rule_id}"),
+        None => format!("intern: disable {rule_id}"),
+    };
+
+    match notes_path_for_slide(&mut archive, &slide_path) {
+        Some(notes_path) => {
+            let notes_xml = read_zip_string(&mut archive, &notes_path)
+                .ok_or_else(|| werr(format!("cannot read notes part '{notes_path}'")))?;
+            let patched = inject_notes_paragraph(&notes_xml, &directive)
+                .ok_or_else(|| werr(format!("no txBody in notes slide '{notes_path}'")))?;
+            rewrite_one_part(path, &data, &notes_path, &patched)
+        }
+        None => create_notes_slide(path, &data, &slide_path, &directive),
+    }
+}
+
+fn slide_path_at<R: Read + Seek>(archive: &mut ZipArchive<R>, slide_idx: usize) -> Option<String> {
+    let rels_xml = read_zip_string(archive, "ppt/_rels/presentation.xml.rels")?;
+    let pres_xml = read_zip_string(archive, "ppt/presentation.xml");
+    let order = resolve_slide_order(pres_xml.as_deref(), &rels_xml);
+    if !order.is_empty() {
+        return order.into_iter().nth(slide_idx);
+    }
+    // Fallback: numeric order of slide XML files.
+    let count = archive.len();
+    let mut paths: Vec<String> = Vec::new();
+    for i in 0..count {
+        if let Ok(file) = archive.by_index(i) {
+            let name = file.name().to_owned();
+            if name.starts_with("ppt/slides/slide")
+                && name.ends_with(".xml")
+                && !name.contains("_rels")
+            {
+                paths.push(name);
+            }
+        }
+    }
+    paths.sort_by_key(|p| parse_slide_idx(p).unwrap_or(usize::MAX));
+    paths.into_iter().nth(slide_idx)
+}
+
+fn notes_path_for_slide<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    slide_path: &str,
+) -> Option<String> {
+    let rels_path = rels_path_for(slide_path)?;
+    let rels_xml = read_zip_string(archive, &rels_path)?;
+    notes_target(&rels_xml)
+}
+
+fn read_zip_string<R: Read + Seek>(archive: &mut ZipArchive<R>, name: &str) -> Option<String> {
+    let mut file = archive.by_name(name).ok()?;
+    let mut s = String::new();
+    file.read_to_string(&mut s).ok()?;
+    Some(s)
+}
+
+fn inject_notes_paragraph(notes_xml: &str, directive: &str) -> Option<String> {
+    let paragraph = format!("<a:p><a:r><a:t>{}</a:t></a:r></a:p>", xml_escape(directive));
+    let insert_pos = notes_xml.rfind("</p:txBody>")?;
+    let mut result = String::with_capacity(notes_xml.len() + paragraph.len());
+    result.push_str(&notes_xml[..insert_pos]);
+    result.push_str(&paragraph);
+    result.push_str(&notes_xml[insert_pos..]);
+    Some(result)
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+// ---- notes slide creation ----
+
+fn create_notes_slide(
+    path: &str,
+    data: &[u8],
+    slide_path: &str,
+    directive: &str,
+) -> Result<(), Error> {
+    let werr = |msg: String| Error::Write {
+        path: path.to_owned(),
+        message: msg,
+    };
+    let mut archive = ZipArchive::new(Cursor::new(data)).map_err(|e| werr(e.to_string()))?;
+
+    let notes_n = next_notes_slide_number(&mut archive);
+    let notes_path = format!("ppt/notesSlides/notesSlide{notes_n}.xml");
+    let notes_xml = minimal_notes_xml(directive);
+
+    let rels_path =
+        rels_path_for(slide_path).ok_or_else(|| werr("cannot compute slide rels path".into()))?;
+    let rel_target = format!("../notesSlides/notesSlide{notes_n}.xml");
+    let notes_rel_type =
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
+    let updated_rels = match read_zip_string(&mut archive, &rels_path) {
+        Some(existing) => inject_relationship(&existing, notes_rel_type, &rel_target),
+        None => minimal_rels_xml(notes_rel_type, &rel_target),
+    };
+
+    let content_types = read_zip_string(&mut archive, "[Content_Types].xml")
+        .ok_or_else(|| werr("cannot read [Content_Types].xml".into()))?;
+    let updated_ct = add_content_type_override(&content_types, &notes_path)
+        .ok_or_else(|| werr("cannot update [Content_Types].xml".into()))?;
+
+    let patches: HashMap<String, String> = [
+        (rels_path, updated_rels),
+        ("[Content_Types].xml".into(), updated_ct),
+        (notes_path, notes_xml),
+    ]
+    .into_iter()
+    .collect();
+    rewrite_with_patches(path, data, &patches)
+}
+
+fn next_notes_slide_number<R: Read + Seek>(archive: &mut ZipArchive<R>) -> u32 {
+    let mut max_n: u32 = 0;
+    for i in 0..archive.len() {
+        if let Ok(file) = archive.by_index(i)
+            && let Some(n) = notes_slide_number(file.name())
+        {
+            max_n = max_n.max(n);
+        }
+    }
+    max_n + 1
+}
+
+fn notes_slide_number(path: &str) -> Option<u32> {
+    path.strip_prefix("ppt/notesSlides/notesSlide")?
+        .strip_suffix(".xml")?
+        .parse()
+        .ok()
+}
+
+fn minimal_notes_xml(directive: &str) -> String {
+    let a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+    let p = "http://schemas.openxmlformats.org/presentationml/2006/main";
+    let r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    let escaped = xml_escape(directive);
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:notes xmlns:a="{a}" xmlns:p="{p}" xmlns:r="{r}"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr><p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image Placeholder 1"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes Placeholder 2"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>{escaped}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClr/></p:clrMapOvr></p:notes>"#
+    )
+}
+
+fn add_content_type_override(content_types_xml: &str, notes_path: &str) -> Option<String> {
+    let ct = "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml";
+    let override_elem = format!(r#"<Override PartName="/{notes_path}" ContentType="{ct}"/>"#);
+    let pos = content_types_xml.rfind("</Types>")?;
+    Some(format!(
+        "{}{}{}",
+        &content_types_xml[..pos],
+        override_elem,
+        &content_types_xml[pos..]
+    ))
+}
+
+fn inject_relationship(rels_xml: &str, rel_type: &str, target: &str) -> String {
+    let new_id = max_rel_id(rels_xml) + 1;
+    let new_rel =
+        format!(r#"<Relationship Id="rId{new_id}" Type="{rel_type}" Target="{target}"/>"#);
+    let pos = rels_xml.rfind("</Relationships>").unwrap_or(rels_xml.len());
+    format!("{}{}{}", &rels_xml[..pos], new_rel, &rels_xml[pos..])
+}
+
+fn max_rel_id(rels_xml: &str) -> u32 {
+    let needle = "Id=\"rId";
+    let mut max = 0u32;
+    let mut rest = rels_xml;
+    while let Some(pos) = rest.find(needle) {
+        let after = &rest[pos + needle.len()..];
+        if let Some(end) = after.find('"')
+            && let Ok(n) = after[..end].parse::<u32>()
+        {
+            max = max.max(n);
+        }
+        rest = &rest[pos + 1..];
+    }
+    max
+}
+
+fn minimal_rels_xml(rel_type: &str, target: &str) -> String {
+    let xmlns = "http://schemas.openxmlformats.org/package/2006/relationships";
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="{xmlns}"><Relationship Id="rId1" Type="{rel_type}" Target="{target}"/></Relationships>"#
+    )
+}
+
+fn rewrite_with_patches(
+    path: &str,
+    data: &[u8],
+    patches: &HashMap<String, String>,
+) -> Result<(), Error> {
+    let werr = |msg: String| Error::Write {
+        path: path.to_owned(),
+        message: msg,
+    };
+    let mut archive = ZipArchive::new(Cursor::new(data)).map_err(|e| werr(e.to_string()))?;
+    let mut out: Vec<u8> = Vec::with_capacity(data.len() + 4096);
+    let mut written: Vec<String> = Vec::new();
+    {
+        let mut zip_out = zip::ZipWriter::new(Cursor::new(&mut out));
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).map_err(|e| werr(e.to_string()))?;
+            let name = file.name().to_owned();
+            let options = FileOptions::default().compression_method(file.compression());
+            zip_out
+                .start_file(&name, options)
+                .map_err(|e| werr(e.to_string()))?;
+            if let Some(content) = patches.get(&name) {
+                zip_out
+                    .write_all(content.as_bytes())
+                    .map_err(|e| werr(e.to_string()))?;
+            } else {
+                let mut bytes: Vec<u8> = Vec::new();
+                file.read_to_end(&mut bytes)
+                    .map_err(|e| werr(e.to_string()))?;
+                zip_out.write_all(&bytes).map_err(|e| werr(e.to_string()))?;
+            }
+            written.push(name);
+        }
+        // New parts not yet in the archive (e.g. a freshly created notes slide).
+        for (name, content) in patches {
+            if !written.contains(name) {
+                let options = FileOptions::default();
+                zip_out
+                    .start_file(name, options)
+                    .map_err(|e| werr(e.to_string()))?;
+                zip_out
+                    .write_all(content.as_bytes())
+                    .map_err(|e| werr(e.to_string()))?;
+            }
+        }
+        zip_out.finish().map_err(|e| werr(e.to_string()))?;
+    }
+    fs::write(path, out).map_err(|e| werr(e.to_string()))
+}
+
+fn rewrite_one_part(path: &str, data: &[u8], part_name: &str, content: &str) -> Result<(), Error> {
+    let werr = |msg: String| Error::Write {
+        path: path.to_owned(),
+        message: msg,
+    };
+    let mut archive = ZipArchive::new(Cursor::new(data)).map_err(|e| werr(e.to_string()))?;
+    let mut out: Vec<u8> = Vec::with_capacity(data.len());
+    {
+        let mut zip_out = zip::ZipWriter::new(Cursor::new(&mut out));
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).map_err(|e| werr(e.to_string()))?;
+            let name = file.name().to_owned();
+            let options = FileOptions::default().compression_method(file.compression());
+            zip_out
+                .start_file(&name, options)
+                .map_err(|e| werr(e.to_string()))?;
+            if name == part_name {
+                zip_out
+                    .write_all(content.as_bytes())
+                    .map_err(|e| werr(e.to_string()))?;
+            } else {
+                let mut bytes: Vec<u8> = Vec::new();
+                file.read_to_end(&mut bytes)
+                    .map_err(|e| werr(e.to_string()))?;
+                zip_out.write_all(&bytes).map_err(|e| werr(e.to_string()))?;
+            }
+        }
+        zip_out.finish().map_err(|e| werr(e.to_string()))?;
+    }
+    fs::write(path, out).map_err(|e| werr(e.to_string()))
+}
 
 /// Apply a set of fixes to a PPTX file in-place, backing up the original to `<path>.bak`.
 pub fn apply_fixes(path: &str, fixes: &[Fix]) -> Result<(), Error> {
@@ -324,7 +642,7 @@ fn patch_font(e: BytesStart<'_>, fix: &Fix) -> BytesStart<'static> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_ws, parse_slide_idx, patch_slide_xml};
+    use super::{inject_notes_paragraph, normalize_ws, parse_slide_idx, patch_slide_xml};
     use crate::rules::Fix;
 
     #[test]
@@ -415,5 +733,127 @@ mod tests {
         let result = patch_slide_xml(xml, &[&fix]).unwrap();
         // Different shape - text should be untouched.
         assert!(result.contains("hello  world"), "got: {result}");
+    }
+
+    #[test]
+    fn inject_notes_paragraph_appends_before_last_txbody() {
+        let xml = r#"<p:notes>
+  <p:cSld><p:spTree>
+    <p:sp><p:txBody><a:bodyPr/><a:lstStyle/>
+      <a:p><a:r><a:t>existing note</a:t></a:r></a:p>
+    </p:txBody></p:sp>
+  </p:spTree></p:cSld>
+</p:notes>"#;
+        let result = inject_notes_paragraph(xml, "intern: disable(5) EMPTY_TEXTBOX").unwrap();
+        assert!(
+            result.contains("<a:p><a:r><a:t>intern: disable(5) EMPTY_TEXTBOX</a:t></a:r></a:p>"),
+            "directive missing: {result}"
+        );
+        assert!(
+            result.contains("existing note"),
+            "original text lost: {result}"
+        );
+        // New paragraph must appear before the closing txBody tag.
+        let directive_pos = result.find("intern: disable").unwrap();
+        let txbody_close_pos = result.rfind("</p:txBody>").unwrap();
+        assert!(
+            directive_pos < txbody_close_pos,
+            "directive not before </p:txBody>"
+        );
+    }
+
+    #[test]
+    fn inject_notes_paragraph_returns_none_without_txbody() {
+        let xml = "<p:notes><p:cSld/></p:notes>";
+        assert!(inject_notes_paragraph(xml, "intern: disable(1) TITLE_Y").is_none());
+    }
+
+    #[test]
+    fn inject_notes_paragraph_escapes_xml_special_chars() {
+        let xml = r#"<p:notes><p:sp><p:txBody><a:p/></p:txBody></p:sp></p:notes>"#;
+        let result = inject_notes_paragraph(xml, "a & b < c > d").unwrap();
+        assert!(result.contains("a &amp; b &lt; c &gt; d"), "got: {result}");
+    }
+
+    #[test]
+    fn notes_slide_number_parses_path() {
+        use super::notes_slide_number;
+        assert_eq!(
+            notes_slide_number("ppt/notesSlides/notesSlide1.xml"),
+            Some(1)
+        );
+        assert_eq!(
+            notes_slide_number("ppt/notesSlides/notesSlide42.xml"),
+            Some(42)
+        );
+        assert_eq!(notes_slide_number("ppt/slides/slide1.xml"), None);
+    }
+
+    #[test]
+    fn minimal_notes_xml_contains_directive_and_structure() {
+        use super::minimal_notes_xml;
+        let xml = minimal_notes_xml("intern: disable(9) TITLE_Y");
+        assert!(
+            xml.contains("intern: disable(9) TITLE_Y"),
+            "directive missing"
+        );
+        assert!(xml.contains("</p:txBody>"), "txBody missing");
+        assert!(xml.contains("</p:notes>"), "root tag missing");
+    }
+
+    #[test]
+    fn add_content_type_override_inserts_before_types_close() {
+        use super::add_content_type_override;
+        let xml = r#"<?xml version="1.0"?><Types xmlns="x"><Default Extension="xml" ContentType="text/xml"/></Types>"#;
+        let result = add_content_type_override(xml, "ppt/notesSlides/notesSlide2.xml").unwrap();
+        assert!(
+            result.contains(r#"PartName="/ppt/notesSlides/notesSlide2.xml""#),
+            "got: {result}"
+        );
+        assert!(
+            result.contains("notesSlide+xml"),
+            "content type missing: {result}"
+        );
+        assert!(
+            result.ends_with("</Types>"),
+            "must end with </Types>: {result}"
+        );
+    }
+
+    #[test]
+    fn max_rel_id_finds_highest() {
+        use super::max_rel_id;
+        let rels = r#"<Relationships><Relationship Id="rId3"/><Relationship Id="rId1"/><Relationship Id="rId7"/></Relationships>"#;
+        assert_eq!(max_rel_id(rels), 7);
+    }
+
+    #[test]
+    fn max_rel_id_returns_zero_when_none() {
+        use super::max_rel_id;
+        assert_eq!(max_rel_id("<Relationships/>"), 0);
+    }
+
+    #[test]
+    fn inject_relationship_increments_id() {
+        use super::inject_relationship;
+        let rels =
+            r#"<Relationships><Relationship Id="rId2" Type="x" Target="y"/></Relationships>"#;
+        let result = inject_relationship(
+            rels,
+            "http://x/notesSlide",
+            "../notesSlides/notesSlide1.xml",
+        );
+        assert!(result.contains("rId3"), "expected rId3: {result}");
+        assert!(result.contains("notesSlide"), "target missing: {result}");
+        assert!(result.ends_with("</Relationships>"), "got: {result}");
+    }
+
+    #[test]
+    fn minimal_rels_xml_produces_valid_shell() {
+        use super::minimal_rels_xml;
+        let result = minimal_rels_xml("http://x/notesSlide", "../notesSlides/notesSlide1.xml");
+        assert!(result.contains("rId1"), "got: {result}");
+        assert!(result.contains("notesSlide"), "got: {result}");
+        assert!(result.contains("</Relationships>"), "got: {result}");
     }
 }
