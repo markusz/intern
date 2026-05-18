@@ -18,9 +18,13 @@ pub fn run(args: IgnoreArgs) -> miette::Result<()> {
 
     writer::append_notes_directive(path, slide_idx, args.element, &args.rule).into_diagnostic()?;
 
+    let directive = match args.element {
+        Some(id) => format!("intern: disable({id}) {}", args.rule),
+        None => format!("intern: disable {}", args.rule),
+    };
     println!(
-        "{path}: added \"intern: disable({}) {}\" to slide {} speaker notes (backup: {path}.bak)",
-        args.element, args.rule, args.slide
+        "{path}: added \"{directive}\" to slide {} speaker notes (backup: {path}.bak)",
+        args.slide
     );
     Ok(())
 }

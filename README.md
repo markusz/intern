@@ -76,9 +76,10 @@ cargo install --path intern
 ## Usage
 
 ```sh
-intern deck.pptx          # check (the default action)
-intern check slides/      # check every .pptx in a folder
-intern fix deck.pptx      # auto-fix violations in place
+intern deck.pptx                    # check (the default action)
+intern check slides/                # check every .pptx in a folder
+intern fix deck.pptx                # auto-fix violations in place
+intern ignore deck.pptx -s 3 -r RULE [-e 42]  # suppress a violation in speaker notes
 ```
 
 That's it. No configuration required to get started - but for ongoing use, most
@@ -140,14 +141,35 @@ max_slides = 40
 Each rule is configured in its own `[rules.<RULE_ID>]` table; `disable` and `only`
 are blunt top-level lists. See the [documentation](https://markusz.github.io/intern/configuration.html) for the full reference.
 
-### Skipping a slide
+### Suppressing violations
 
-Exclude a slide from checks by adding a line to its **speaker notes** - handy for
-title slides, section dividers, or a deliberately different layout:
+#### `intern ignore` - write the directive for you
+
+The quickest way to suppress a violation is `intern ignore`:
+
+```sh
+intern ignore deck.pptx -s <slide> -r <rule>           # whole slide
+intern ignore deck.pptx -s <slide> -r <rule> -e <id>   # one element
+```
+
+This writes an `intern: disable` line into that slide's speaker notes and backs
+the file up to `deck.pptx.bak`. The slide number and element id come straight from
+the violation table output.
+
+#### Manual speaker-note directives
+
+You can also edit the notes by hand. To skip an entire slide:
 
 ```text
 intern: disable                        # skip every rule on this slide
 intern: disable TITLE_Y, GRID_ROW_TOP  # skip only these rules
+```
+
+To suppress a rule for one element only (use the id shown in the **Id** column):
+
+```text
+intern: disable(42) EMPTY_TEXTBOX
+intern: disable(42)                    # suppress every rule for that element
 ```
 
 The slide is dropped before those rules run, so it skews no baselines (like the

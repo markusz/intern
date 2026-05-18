@@ -96,13 +96,16 @@ pub struct IgnoreArgs {
     pub file: PathBuf,
 
     /// Slide number (1-based)
+    #[arg(short = 's', long)]
     pub slide: usize,
 
-    /// Element id (the id shown in the violation table)
-    pub element: u32,
-
     /// Rule ID to suppress (e.g. EMPTY_TEXTBOX)
+    #[arg(short = 'r', long)]
     pub rule: String,
+
+    /// Element id - suppress only for this element; omit to suppress for the whole slide
+    #[arg(short = 'e', long)]
+    pub element: Option<u32>,
 }
 
 #[derive(ValueEnum, Clone, Debug, PartialEq)]
