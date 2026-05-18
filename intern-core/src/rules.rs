@@ -309,7 +309,7 @@ impl fmt::Display for ViolationMessage {
                 write!(f, "deck has {count} slides (max {limit})")
             }
             Self::ElementOverlap { other_element } => {
-                write!(f, "bounding box overlaps with '{other_element}'")
+                write!(f, "bounding box overlaps with {other_element}")
             }
         }
     }

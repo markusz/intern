@@ -13,6 +13,8 @@ cargo clippy -- -D warnings
 
 Concise only. No summaries, no "here's what I did", no sign-offs. Say the thing, stop.
 
+Push back when a request has bad ROI - a library limitation that makes something a fragile hack, a feature whose implementation cost outweighs the value, a design that works against the grain of the codebase. Say so plainly and suggest the simpler alternative. Don't be precious about it, but don't silently contort the code either.
+
 ## Code style
 
 - No panicking code unless the error is truly unrecoverable or the invariant is provably safe. In either case add a `// SAFETY:` comment explaining why.

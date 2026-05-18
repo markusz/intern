@@ -84,30 +84,56 @@ fn render_table(violations: &[Finding], group_by: GroupBy) -> String {
         .load_preset(UTF8_FULL_CONDENSED)
         .set_content_arrangement(ContentArrangement::Dynamic);
     match group_by {
-        GroupBy::Slide => table.set_header(vec!["Slide", "Rule", "Element", "Text", "Message"]),
-        GroupBy::Rule => table.set_header(vec!["Rule", "Slide", "Element", "Text", "Message"]),
+        GroupBy::Slide => table.set_header(vec![
+            "Slide", "Rule", "Type", "Position", "Id", "Text", "Message",
+        ]),
+        GroupBy::Rule => table.set_header(vec![
+            "Rule", "Slide", "Type", "Position", "Id", "Text", "Message",
+        ]),
     };
 
-    // Cap the element, text, and message columns so the table stays readable.
-    // SAFETY: the header always has 5 columns, so indices 2-4 exist.
-    for (col, width) in [(2, 30), (3, 60), (4, 52)] {
+    // Cap variable-width columns so the table stays readable.
+    // SAFETY: the header always has 7 columns, so these indices always exist.
+    for (col, width) in [(2, 12), (3, 16), (4, 6), (5, 50), (6, 52)] {
         table
             .column_mut(col)
             .unwrap()
             .set_constraint(ColumnConstraint::UpperBoundary(Width::Fixed(width)));
     }
 
+    let mut current_group: Option<String> = None;
     for v in &sorted {
+        let group_key = match group_by {
+            GroupBy::Slide => v.slide.map(|n| n.to_string()).unwrap_or_default(),
+            GroupBy::Rule => v.rule_id.to_string(),
+        };
+        if current_group.as_deref() != Some(group_key.as_str()) && current_group.is_some() {
+            table.add_row(vec![""; 7]);
+        }
+        current_group = Some(group_key);
+
         let slide = v
             .slide
             .map(|n| n.to_string())
             .unwrap_or_else(|| "-".to_string());
-        let element = v.element_display.clone().unwrap_or_else(|| "-".to_string());
+        let kind = v.element_kind.clone().unwrap_or_else(|| "-".to_string());
+        let pos = v
+            .element_position
+            .clone()
+            .unwrap_or_else(|| "-".to_string());
+        let eid = v
+            .element_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "-".to_string());
         let text = v.excerpt.clone().unwrap_or_else(|| "-".to_string());
         let message = v.message.to_string();
         match group_by {
-            GroupBy::Slide => table.add_row(vec![&slide, v.rule_id, &element, &text, &message]),
-            GroupBy::Rule => table.add_row(vec![v.rule_id, &slide, &element, &text, &message]),
+            GroupBy::Slide => {
+                table.add_row(vec![&slide, v.rule_id, &kind, &pos, &eid, &text, &message])
+            }
+            GroupBy::Rule => {
+                table.add_row(vec![v.rule_id, &slide, &kind, &pos, &eid, &text, &message])
+            }
         };
     }
 
@@ -122,6 +148,15 @@ fn render_text(violations: &[Finding], group_by: GroupBy) -> String {
         GroupBy::Slide => render_text_by_slide(violations),
         GroupBy::Rule => render_text_by_rule(violations),
     }
+}
+
+/// `"TextBox (42px, 107px) #7"` for text and rule-grouped output; `None` when
+/// the violation has no element reference.
+fn element_inline(v: &Finding) -> Option<String> {
+    let kind = v.element_kind.as_deref()?;
+    let pos = v.element_position.as_deref().unwrap_or("-");
+    let id = v.element_id.map(|id| format!(" #{id}")).unwrap_or_default();
+    Some(format!("{kind} {pos}{id}"))
 }
 
 /// ` "snippet"` for a finding that carries element text, else an empty string.
@@ -150,7 +185,7 @@ fn render_text_by_slide(violations: &[Finding]) -> String {
                 }
             }
         }
-        match &v.element_display {
+        match element_inline(v) {
             Some(el) => {
                 let _ = writeln!(
                     out,
@@ -185,7 +220,7 @@ fn render_text_by_rule(violations: &[Finding]) -> String {
             .slide
             .map(|n| format!("slide {n}"))
             .unwrap_or_else(|| "presentation".to_string());
-        match &v.element_display {
+        match element_inline(v) {
             Some(el) => {
                 let _ = writeln!(out, "  {loc} - {el}{} - {}", excerpt_suffix(v), v.message);
             }
@@ -220,7 +255,11 @@ struct JsonViolation<'a> {
     rule_id: &'a str,
     slide: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    element: Option<&'a str>,
+    element_type: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    element_position: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    element_id: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     excerpt: Option<&'a str>,
     message: String,
@@ -231,7 +270,9 @@ fn json_violation(v: &Finding) -> JsonViolation<'_> {
     JsonViolation {
         rule_id: v.rule_id,
         slide: v.slide,
-        element: v.element_display.as_deref(),
+        element_type: v.element_kind.as_deref(),
+        element_position: v.element_position.as_deref(),
+        element_id: v.element_id,
         excerpt: v.excerpt.as_deref(),
         message: v.message.to_string(),
         severity: match v.severity {
@@ -270,7 +311,9 @@ mod tests {
                 fix: None,
             },
             excerpt: None,
-            element_display: None,
+            element_kind: None,
+            element_position: None,
+            element_id: None,
         }
     }
 
@@ -314,7 +357,9 @@ mod tests {
     #[test]
     fn table_shows_offending_element_text() {
         let mut f = finding("ALL_CAPS", Some(2), Severity::Warning);
-        f.element_display = Some("TextBox at (42px, 107px)".to_string());
+        f.element_kind = Some("TextBox".to_string());
+        f.element_position = Some("(42px, 107px)".to_string());
+        f.element_id = Some(7);
         f.excerpt = Some("SOME SHOUTING TEXT".to_string());
         let out = render(
             &results(vec![("deck.pptx", vec![f])]),
@@ -322,7 +367,9 @@ mod tests {
             OutputFormat::Table,
         );
         assert!(out.contains("SOME SHOUTING TEXT"), "{out}");
-        assert!(out.contains("TextBox at (42px, 107px)"), "{out}");
+        assert!(out.contains("TextBox"), "{out}");
+        assert!(out.contains("(42px, 107px)"), "{out}");
+        assert!(out.contains("7"), "{out}");
     }
 
     #[test]
@@ -358,6 +405,32 @@ mod tests {
         assert!(out.contains("\"path\": \"deck.pptx\""), "{out}");
         assert!(out.contains("\"rule_id\": \"TITLE_PRESENT\""), "{out}");
         assert!(out.contains("\"severity\": \"error\""), "{out}");
+    }
+
+    #[test]
+    fn table_inserts_blank_row_between_slide_groups() {
+        let r = results(vec![(
+            "deck.pptx",
+            vec![
+                finding("RULE_A", Some(1), Severity::Error),
+                finding("RULE_B", Some(2), Severity::Warning),
+            ],
+        )]);
+        let out = render(&r, GroupBy::Slide, OutputFormat::Table);
+        // Both slides present and table is not broken.
+        assert!(out.contains("RULE_A"), "{out}");
+        assert!(out.contains("RULE_B"), "{out}");
+        // A blank separator row sits between the two slide groups.
+        // comfy_table renders it as a row whose only non-whitespace chars
+        // are the border/column-separator chars (│ and ┆).
+        let has_separator = out.lines().any(|l| {
+            l.contains('\u{2502}')
+                && l.chars()
+                    .filter(|c| !matches!(c, '\u{2502}' | '\u{2506}' | ' '))
+                    .count()
+                    == 0
+        });
+        assert!(has_separator, "expected blank separator row\n{out}");
     }
 
     #[test]

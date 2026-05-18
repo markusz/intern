@@ -21,9 +21,12 @@ pub struct Finding {
     /// First `EXCERPT_CHARS` characters of the offending element's text, when it
     /// has any. `None` for geometry-only or text-free elements.
     pub excerpt: Option<String>,
-    /// Human-readable element description: `"TextBox at (42px, 107px)"`.
-    /// `None` when the violation has no element reference.
-    pub element_display: Option<String>,
+    /// Element kind as a display string: `"TextBox"`, `"Body"`, etc.
+    pub element_kind: Option<String>,
+    /// Top-left corner in screen pixels: `"(42px, 107px)"`.
+    pub element_position: Option<String>,
+    /// The `<p:cNvPr>` id - stable within a slide, used for element-level suppression.
+    pub element_id: Option<u32>,
 }
 
 impl Deref for Finding {
@@ -85,11 +88,15 @@ pub fn check_file(
                 .zip(violation.element)
                 .and_then(|(slide_no, id)| element_map.get(&(slide_no, id)).copied());
             let excerpt = excerpt_text(resolved);
-            let element_display = resolved.map(element_display_str);
+            let element_kind = resolved.map(|e| e.kind.to_string());
+            let element_position = resolved.map(element_position_str);
+            let element_id = resolved.map(|e| e.id);
             findings.push(Finding {
                 violation,
                 excerpt,
-                element_display,
+                element_kind,
+                element_position,
+                element_id,
             });
         }
     }
@@ -118,11 +125,11 @@ fn excerpt_text(element: Option<&SlideElement>) -> Option<String> {
     }
 }
 
-/// `"TextBox at (42px, 107px)"` - kind and top-left corner in screen pixels.
-fn element_display_str(e: &SlideElement) -> String {
+/// Top-left corner as `"(42px, 107px)"`.
+fn element_position_str(e: &SlideElement) -> String {
     let x_px = e.rect.x / model::EMU_PER_PX;
     let y_px = e.rect.y / model::EMU_PER_PX;
-    format!("{} at ({}px, {}px)", e.kind, x_px, y_px)
+    format!("({}px, {}px)", x_px, y_px)
 }
 
 /// The slides a rule should see: all of them, unless some slide's `intern: disable`

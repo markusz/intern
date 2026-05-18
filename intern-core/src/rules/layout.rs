@@ -1,4 +1,4 @@
-use crate::model::{ElementKind, Rect, SlideData, SlideElement};
+use crate::model::{EMU_PER_PX, ElementKind, Rect, SlideData, SlideElement};
 use crate::rules::{Rule, RuleContext, Severity, Violation, ViolationMessage};
 
 pub struct TitlePresentRule;
@@ -88,6 +88,12 @@ fn rects_overlap(a: &Rect, b: &Rect) -> bool {
     a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 
+fn element_position_display(e: &SlideElement) -> String {
+    let x_px = e.rect.x / EMU_PER_PX;
+    let y_px = e.rect.y / EMU_PER_PX;
+    format!("{} at ({}px, {}px)", e.kind, x_px, y_px)
+}
+
 impl Rule for TextElementOverlapRule {
     fn id(&self) -> &'static str {
         "TEXT_ELEMENT_OVERLAP"
@@ -112,7 +118,7 @@ impl Rule for TextElementOverlapRule {
                             slide: Some(slide.index + 1),
                             element: Some(texts[i].id),
                             message: ViolationMessage::ElementOverlap {
-                                other_element: texts[j].name.clone(),
+                                other_element: element_position_display(texts[j]),
                             },
                             severity: Severity::Warning,
                             fix: None,
@@ -380,7 +386,7 @@ mod tests {
         assert_eq!(v[0].element, Some(1));
         assert!(matches!(
             &v[0].message,
-            ViolationMessage::ElementOverlap { other_element } if other_element == "B"
+            ViolationMessage::ElementOverlap { other_element } if other_element == "TextBox at (52px, 52px)"
         ));
         assert!(v[0].fix.is_none());
     }
