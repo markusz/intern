@@ -59,10 +59,9 @@ Geometric checks. All compare positions within a configurable pixel
 
 > Some rules are **off by default** and run only when switched on with
 > `enabled = true` in their `[rules.<RULE_ID>]` table (or named in `--rules`):
-> `SLIDE_COUNT` (its 20-slide limit is too deck-specific), `TITLE_PRESENT` and
-> `BODY_TEXT_COLOR` (assume more uniformity than designed decks have), the
-> `GRID_*` and `COLUMN_*` rules (the layout detector is unreliable), and
-> `BODY_FONT_SIZE` (pending redesign). Every other rule runs by default.
+> `SLIDE_COUNT` (its 20-slide limit is too deck-specific) and the `GRID_*` and
+> `COLUMN_*` rules (the layout detector is unreliable). Every other rule runs by
+> default.
 
 ## Auto-fixable rules
 

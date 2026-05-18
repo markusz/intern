@@ -439,13 +439,47 @@ fn slide_path_num(path: &str) -> Option<u32> {
         .ok()
 }
 
-/// An `intern: disable` directive parsed from a slide's speaker notes.
+/// All `intern: disable` directives parsed from one slide's speaker notes.
+#[derive(Debug, PartialEq, Eq, Default)]
+pub struct SlideExclusion {
+    /// `None` = no whole-slide directive.
+    /// `Some([])` = bare `intern: disable` (all rules).
+    /// `Some(ids)` = `intern: disable RULE_A RULE_B` (named rules only).
+    pub slide: Option<Vec<String>>,
+    /// Per-element directives from `intern: disable(id) [RULES]`.
+    pub elements: Vec<ElementExclusion>,
+}
+
+/// A per-element `intern: disable(id) [RULES]` directive.
 #[derive(Debug, PartialEq, Eq)]
-pub enum SlideExclusion {
-    /// `intern: disable` - the whole slide is excluded from every rule.
-    All,
-    /// `intern: disable RULE_A,RULE_B` - excluded only from the named rules.
-    Rules(Vec<String>),
+pub struct ElementExclusion {
+    pub element_id: u32,
+    /// Empty = all rules suppressed for this element.
+    pub rules: Vec<String>,
+}
+
+impl SlideExclusion {
+    /// True when a bare `intern: disable` suppresses the whole slide.
+    pub fn suppresses_slide(&self) -> bool {
+        self.slide.as_deref() == Some(&[])
+    }
+
+    /// True when `rule_id` is suppressed for the whole slide.
+    pub fn suppresses_rule_for_slide(&self, rule_id: &str) -> bool {
+        match &self.slide {
+            None => false,
+            Some(ids) if ids.is_empty() => true,
+            Some(ids) => ids.iter().any(|id| id == rule_id),
+        }
+    }
+
+    /// True when `rule_id` is suppressed for a specific element on this slide.
+    pub fn suppresses_rule_for_element(&self, element_id: u32, rule_id: &str) -> bool {
+        self.elements.iter().any(|ex| {
+            ex.element_id == element_id
+                && (ex.rules.is_empty() || ex.rules.iter().any(|id| id == rule_id))
+        })
+    }
 }
 
 /// Reads each slide's `intern: disable` speaker-note directive, keyed by 0-based
@@ -541,32 +575,69 @@ fn extract_notes_text(notes_xml: &str) -> String {
         .join("\n")
 }
 
-// Parses every `intern: disable` line in a slide's notes into one directive. A bare
-// line disables the whole slide; lines with rule ids accumulate into a rule list.
+// Parses every `intern: disable` line in a slide's notes into one directive.
+// A bare line disables the whole slide; a line with rule ids accumulates them;
+// a line with `(id)` syntax records a per-element suppression.
 fn parse_exclusion(notes: &str) -> Option<SlideExclusion> {
-    let mut rules: Vec<String> = Vec::new();
-    let mut seen = false;
+    let mut slide_all = false;
+    let mut slide_rules: Vec<String> = Vec::new();
+    let mut elements: Vec<ElementExclusion> = Vec::new();
+
     for line in notes.lines() {
         let Some(rest) = disable_directive_rest(line) else {
             continue;
         };
-        seen = true;
         if rest.is_empty() {
-            return Some(SlideExclusion::All);
+            slide_all = true;
+            continue;
         }
-        for id in rest.split(',') {
-            let id = id.trim();
-            if !id.is_empty() {
-                rules.push(id.to_ascii_uppercase());
+        if let Some(elem) = parse_element_exclusion(rest) {
+            elements.push(elem);
+            continue;
+        }
+        if !slide_all {
+            for id in rest.split([',', ' ']) {
+                let id = id.trim().to_ascii_uppercase();
+                if !id.is_empty() {
+                    slide_rules.push(id);
+                }
             }
         }
     }
-    seen.then_some(SlideExclusion::Rules(rules))
+
+    let slide = if slide_all {
+        Some(vec![])
+    } else if !slide_rules.is_empty() {
+        Some(slide_rules)
+    } else {
+        None
+    };
+
+    if slide.is_some() || !elements.is_empty() {
+        Some(SlideExclusion { slide, elements })
+    } else {
+        None
+    }
+}
+
+// Parses `(id) [RULE_A RULE_B]` from the rest of a disable directive line.
+fn parse_element_exclusion(rest: &str) -> Option<ElementExclusion> {
+    let inner = rest.strip_prefix('(')?;
+    let (id_str, rule_rest) = inner.split_once(')')?;
+    let element_id = id_str.trim().parse::<u32>().ok()?;
+    let rules: Vec<String> = rule_rest
+        .split([',', ' '])
+        .map(|s| s.trim().to_ascii_uppercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    Some(ElementExclusion { element_id, rules })
 }
 
 // If `line` is an `intern: disable` directive (case-insensitive, optional space
-// after the colon), returns the trimmed text after the keyword - empty for a bare
-// whole-slide directive.
+// after the colon), returns the text after the keyword:
+//   - empty string for a bare whole-slide directive
+//   - leading whitespace trimmed for `intern: disable RULE_A`
+//   - `(id)...` untouched for element-level `intern: disable(42) RULE_A`
 fn disable_directive_rest(line: &str) -> Option<&str> {
     let trimmed = line.trim();
     let lower = trimmed.to_ascii_lowercase();
@@ -576,6 +647,8 @@ fn disable_directive_rest(line: &str) -> Option<&str> {
     let rest = &trimmed[prefix.len()..];
     if rest.is_empty() || rest.starts_with(char::is_whitespace) {
         Some(rest.trim())
+    } else if rest.starts_with('(') {
+        Some(rest)
     } else {
         None
     }
@@ -1029,35 +1102,50 @@ mod tests {
         assert_eq!(extract_notes_text(xml), "first line\nintern: disable");
     }
 
+    fn all_slide() -> SlideExclusion {
+        SlideExclusion {
+            slide: Some(vec![]),
+            elements: vec![],
+        }
+    }
+
+    fn slide_rules(ids: &[&str]) -> SlideExclusion {
+        SlideExclusion {
+            slide: Some(ids.iter().map(|s| s.to_string()).collect()),
+            elements: vec![],
+        }
+    }
+
     #[test]
     fn parse_exclusion_bare_marker_disables_whole_slide() {
         assert_eq!(
             parse_exclusion("speaker notes\n  intern: disable  \nmore"),
-            Some(SlideExclusion::All),
+            Some(all_slide()),
         );
-        assert_eq!(
-            parse_exclusion("Intern: Disable"),
-            Some(SlideExclusion::All)
-        );
+        assert_eq!(parse_exclusion("Intern: Disable"), Some(all_slide()));
     }
 
     #[test]
     fn parse_exclusion_collects_named_rules() {
         assert_eq!(
             parse_exclusion("intern: disable TITLE_Y, grid_row_top"),
-            Some(SlideExclusion::Rules(vec![
-                "TITLE_Y".to_string(),
-                "GRID_ROW_TOP".to_string(),
-            ])),
+            Some(slide_rules(&["TITLE_Y", "GRID_ROW_TOP"])),
+        );
+    }
+
+    #[test]
+    fn parse_exclusion_named_rules_space_separated() {
+        assert_eq!(
+            parse_exclusion("intern: disable TITLE_Y GRID_ROW_TOP"),
+            Some(slide_rules(&["TITLE_Y", "GRID_ROW_TOP"])),
         );
     }
 
     #[test]
     fn parse_exclusion_bare_line_wins_over_named() {
-        // A whole-slide directive anywhere in the notes overrides rule lists.
         assert_eq!(
             parse_exclusion("intern: disable TITLE_Y\nintern: disable"),
-            Some(SlideExclusion::All),
+            Some(all_slide()),
         );
     }
 
@@ -1065,7 +1153,63 @@ mod tests {
     fn parse_exclusion_none_without_a_directive() {
         assert_eq!(parse_exclusion(""), None);
         assert_eq!(parse_exclusion("just ordinary speaker notes"), None);
-        // "disable" must be its own keyword, not a prefix of another word.
         assert_eq!(parse_exclusion("intern: disabled forever"), None);
+    }
+
+    #[test]
+    fn parse_exclusion_element_all_rules() {
+        assert_eq!(
+            parse_exclusion("intern: disable(42)"),
+            Some(SlideExclusion {
+                slide: None,
+                elements: vec![ElementExclusion {
+                    element_id: 42,
+                    rules: vec![]
+                }],
+            }),
+        );
+    }
+
+    #[test]
+    fn parse_exclusion_element_named_rules() {
+        assert_eq!(
+            parse_exclusion("intern: disable(7) EMPTY_ELEMENT TITLE_Y"),
+            Some(SlideExclusion {
+                slide: None,
+                elements: vec![ElementExclusion {
+                    element_id: 7,
+                    rules: vec!["EMPTY_ELEMENT".to_string(), "TITLE_Y".to_string()],
+                }],
+            }),
+        );
+    }
+
+    #[test]
+    fn parse_exclusion_element_and_slide_together() {
+        let ex =
+            parse_exclusion("intern: disable TITLE_Y\nintern: disable(5) EMPTY_ELEMENT").unwrap();
+        assert_eq!(ex.slide, Some(vec!["TITLE_Y".to_string()]));
+        assert_eq!(ex.elements.len(), 1);
+        assert_eq!(ex.elements[0].element_id, 5);
+    }
+
+    #[test]
+    fn slide_exclusion_helpers_work() {
+        let ex = SlideExclusion {
+            slide: Some(vec!["TITLE_Y".to_string()]),
+            elements: vec![ElementExclusion {
+                element_id: 3,
+                rules: vec![],
+            }],
+        };
+        assert!(!ex.suppresses_slide());
+        assert!(ex.suppresses_rule_for_slide("TITLE_Y"));
+        assert!(!ex.suppresses_rule_for_slide("EMPTY_ELEMENT"));
+        assert!(ex.suppresses_rule_for_element(3, "EMPTY_ELEMENT"));
+        assert!(!ex.suppresses_rule_for_element(99, "EMPTY_ELEMENT"));
+
+        let all = all_slide();
+        assert!(all.suppresses_slide());
+        assert!(all.suppresses_rule_for_slide("ANYTHING"));
     }
 }

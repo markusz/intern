@@ -3,16 +3,11 @@ use intern_core::rules::{self, Rule};
 use crate::config::Config;
 
 /// Rules that do not run unless opted in. `SLIDE_COUNT`'s limit is deck-specific;
-/// `TITLE_PRESENT` and `BODY_TEXT_COLOR` assume more uniformity than designed decks
-/// have; the `GRID_*` and `COLUMN_*` rules rely on an unreliable layout detector
-/// (to be replaced by the v0.6.0 margin rule); `BODY_FONT_SIZE` is off pending its
-/// v0.6.0 min/max redesign. A default-off rule runs only when its `[rules.X]` table
-/// sets `enabled = true`, or it is named in `only` / `--rules`.
+/// the `GRID_*` and `COLUMN_*` rules rely on an unreliable layout detector
+/// (to be replaced by the v0.6.0 margin rule). A default-off rule runs only when
+/// its `[rules.X]` table sets `enabled = true`, or it is named in `only` / `--rules`.
 const DEFAULT_OFF: &[&str] = &[
     "SLIDE_COUNT",
-    "TITLE_PRESENT",
-    "BODY_TEXT_COLOR",
-    "BODY_FONT_SIZE",
     "GRID_H_SPACING",
     "GRID_V_SPACING",
     "GRID_ROW_TOP",

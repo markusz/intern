@@ -53,7 +53,9 @@ Not every rule is auto-fixable. Alignment, font-size, and whitespace rules carry
 concrete fix; the remaining text-quality and structural rules report the problem but
 leave the change to you. See the [rules reference](./rules.md).
 
-## Skipping checks on a slide
+## Skipping checks
+
+### Skip an entire slide
 
 To exclude a slide from **every** check - a title slide, a section divider, a
 deliberately different layout - add this line to its **speaker notes**:
@@ -71,6 +73,39 @@ intern: disable TITLE_Y, GRID_ROW_TOP
 Either way the slide is dropped before those rules run, so it affects neither the
 report nor their baselines (such as the median title position the other slides are
 compared against).
+
+### Skip a single element
+
+To suppress a rule for one element without affecting the rest of the slide, add
+the element id (the `<p:cNvPr id="...">` attribute - shown as **Id** in the table
+output) in parentheses:
+
+```text
+intern: disable(42) EMPTY_ELEMENT
+```
+
+Omit the rule list to suppress every rule for that element:
+
+```text
+intern: disable(42)
+```
+
+Both syntaxes can appear on the same line as a slide-level directive:
+
+```text
+intern: disable TITLE_Y
+intern: disable(42) EMPTY_ELEMENT
+```
+
+Multiple lines in the same slide's speaker notes are all processed independently.
+
+### Finding IDs
+
+Every finding carries a stable 8-character hex identifier (`FID`) derived from
+the rule id, slide number, and element id. The id is shown in the **FID** column
+of the table output, inline in text output (`[RULE_ID:fid]`), and in the
+`finding_id` field of JSON output. The id is stable across runs as long as the
+element is not moved to a different slide or replaced with a different shape.
 
 ## Use in CI
 

@@ -27,6 +27,8 @@ pub struct Finding {
     pub element_position: Option<String>,
     /// The `<p:cNvPr>` id - stable within a slide, used for element-level suppression.
     pub element_id: Option<u32>,
+    /// Stable 8-char hex identifier for this finding; use with `intern ignore`.
+    pub finding_id: String,
 }
 
 impl Deref for Finding {
@@ -56,12 +58,20 @@ pub fn check_file(
 
     let whole_slide = slides
         .iter()
-        .filter(|s| matches!(exclusions.get(&s.index), Some(SlideExclusion::All)))
+        .filter(|s| {
+            exclusions
+                .get(&s.index)
+                .is_some_and(|ex| ex.suppresses_slide())
+        })
         .count();
     if whole_slide > 0 {
         eprintln!("{path}: skipped {whole_slide} slide(s) marked 'intern: disable'");
     }
-    slides.retain(|s| !matches!(exclusions.get(&s.index), Some(SlideExclusion::All)));
+    slides.retain(|s| {
+        !exclusions
+            .get(&s.index)
+            .is_some_and(|ex| ex.suppresses_slide())
+    });
     if let Some(n) = slide {
         slides.retain(|s| s.index + 1 == n);
     }
@@ -83,6 +93,14 @@ pub fn check_file(
         let view = slides_for_rule(&slides, &exclusions, rule.id());
         for mut violation in rule.check(&view, &ctx) {
             violation.severity = severity;
+            // Skip violations targeting an element suppressed via `intern: disable(id)`.
+            if let (Some(slide_no), Some(eid)) = (violation.slide, violation.element)
+                && exclusions
+                    .get(&(slide_no - 1))
+                    .is_some_and(|ex| ex.suppresses_rule_for_element(eid, rule.id()))
+            {
+                continue;
+            }
             let resolved = violation
                 .slide
                 .zip(violation.element)
@@ -91,12 +109,14 @@ pub fn check_file(
             let element_kind = resolved.map(|e| e.kind.to_string());
             let element_position = resolved.map(element_position_str);
             let element_id = resolved.map(|e| e.id);
+            let finding_id = compute_finding_id(rule.id(), violation.slide, violation.element);
             findings.push(Finding {
                 violation,
                 excerpt,
                 element_kind,
                 element_position,
                 element_id,
+                finding_id,
             });
         }
     }
@@ -140,15 +160,42 @@ fn slides_for_rule<'a>(
     exclusions: &HashMap<usize, SlideExclusion>,
     rule_id: &str,
 ) -> Cow<'a, [SlideData]> {
-    let excluded = |s: &SlideData| match exclusions.get(&s.index) {
-        Some(SlideExclusion::Rules(ids)) => ids.iter().any(|id| id == rule_id),
-        _ => false,
+    let excluded = |s: &SlideData| {
+        exclusions
+            .get(&s.index)
+            .is_some_and(|ex| ex.suppresses_rule_for_slide(rule_id))
     };
     if slides.iter().any(&excluded) {
         Cow::Owned(slides.iter().filter(|s| !excluded(s)).cloned().collect())
     } else {
         Cow::Borrowed(slides)
     }
+}
+
+/// Stable 8-character hex finding identifier. FNV-1a over (rule_id, slide, element_id)
+/// so it is deterministic across runs and platforms.
+fn compute_finding_id(rule_id: &str, slide: Option<usize>, element_id: Option<u32>) -> String {
+    const OFFSET: u64 = 14695981039346656037;
+    const PRIME: u64 = 1099511628211;
+    let mut h = OFFSET;
+    for b in rule_id
+        .as_bytes()
+        .iter()
+        .copied()
+        .chain(std::iter::once(0u8))
+    {
+        h ^= b as u64;
+        h = h.wrapping_mul(PRIME);
+    }
+    for b in (slide.unwrap_or(0) as u64).to_le_bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(PRIME);
+    }
+    for b in (element_id.unwrap_or(0) as u64).to_le_bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(PRIME);
+    }
+    format!("{:08x}", h as u32)
 }
 
 #[cfg(test)]
@@ -216,15 +263,37 @@ mod tests {
     fn slides_for_rule_excludes_only_the_named_rule() {
         let slides = vec![slide(0), slide(1), slide(2)];
         let mut exclusions = HashMap::new();
-        exclusions.insert(1, SlideExclusion::Rules(vec!["TITLE_Y".to_string()]));
+        exclusions.insert(
+            1,
+            SlideExclusion {
+                slide: Some(vec!["TITLE_Y".to_string()]),
+                ..SlideExclusion::default()
+            },
+        );
 
-        // The rule named on slide 1 does not see slide 1...
         let for_title_y = slides_for_rule(&slides, &exclusions, "TITLE_Y");
         assert_eq!(for_title_y.len(), 2);
         assert!(for_title_y.iter().all(|s| s.index != 1));
 
-        // ...but every other rule still sees all three slides.
         let for_other = slides_for_rule(&slides, &exclusions, "GRID_ROW_TOP");
         assert_eq!(for_other.len(), 3);
+    }
+
+    #[test]
+    fn compute_finding_id_is_stable() {
+        let a = compute_finding_id("TITLE_Y", Some(3), Some(7));
+        let b = compute_finding_id("TITLE_Y", Some(3), Some(7));
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 8);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn compute_finding_id_differs_by_input() {
+        let base = compute_finding_id("TITLE_Y", Some(3), Some(7));
+        assert_ne!(base, compute_finding_id("TITLE_X_WIDTH", Some(3), Some(7)));
+        assert_ne!(base, compute_finding_id("TITLE_Y", Some(4), Some(7)));
+        assert_ne!(base, compute_finding_id("TITLE_Y", Some(3), Some(8)));
+        assert_ne!(base, compute_finding_id("TITLE_Y", None, None));
     }
 }
