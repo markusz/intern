@@ -118,11 +118,10 @@ fn try_grid(
     let mut rows: Vec<Vec<usize>> = Vec::new();
     for idx in by_y {
         let y = slide.elements[idx].rect.y;
-        if let Some(row) = rows
-            .iter_mut()
-            // SAFETY: every row starts as vec![idx] and is never emptied, so row[0] always exists.
-            .find(|row| (slide.elements[row[0]].rect.y - y).abs() <= row_tol)
-        {
+        if let Some(row) = rows.iter_mut().find(|row| {
+            row.first()
+                .is_some_and(|&i| (slide.elements[i].rect.y - y).abs() <= row_tol)
+        }) {
             row.push(idx);
         } else {
             rows.push(vec![idx]);
@@ -139,11 +138,10 @@ fn try_grid(
     let mut cols: Vec<Vec<usize>> = Vec::new();
     for idx in by_x {
         let x = slide.elements[idx].rect.x;
-        if let Some(col) = cols
-            .iter_mut()
-            // SAFETY: every col starts as vec![idx] and is never emptied, so col[0] always exists.
-            .find(|col| (slide.elements[col[0]].rect.x - x).abs() <= col_tol)
-        {
+        if let Some(col) = cols.iter_mut().find(|col| {
+            col.first()
+                .is_some_and(|&i| (slide.elements[i].rect.x - x).abs() <= col_tol)
+        }) {
             col.push(idx);
         } else {
             cols.push(vec![idx]);

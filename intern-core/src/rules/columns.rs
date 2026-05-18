@@ -25,21 +25,23 @@ impl Rule for ColumnLeftEdgeRule {
             if left.len() < 2 {
                 continue;
             }
-            // SAFETY: indices from detect() are guaranteed to be within bounds of slide.elements.
             let xs: Vec<i64> = left.iter().map(|&i| slide.elements[i].rect.x).collect();
-            let Some(exp) = median(&xs) else { continue };
+            // SAFETY: xs is 1:1 with left; left.len() >= 2 above, so xs is non-empty.
+            let exp = median(&xs).unwrap_or_else(|| unreachable!());
             for &i in &left {
-                let diff = (slide.elements[i].rect.x - exp).abs();
+                // SAFETY: detect() builds indices from slide.elements.iter().enumerate(); they are always valid.
+                let el = slide.elements.get(i).unwrap_or_else(|| unreachable!());
+                let diff = (el.rect.x - exp).abs();
                 if diff > threshold {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
-                        element: Some(slide.elements[i].id),
+                        element: Some(el.id),
                         message: ViolationMessage::EdgeOff { diff_emu: diff },
                         severity: Severity::Warning,
                         fix: Some(Fix::SetX {
                             slide_idx: slide.index,
-                            element_name: slide.elements[i].name.clone(),
+                            element_name: el.name.clone(),
                             x: exp,
                         }),
                     });
@@ -68,18 +70,26 @@ impl Rule for ColumnTopEdgeRule {
             let left_top_i = left
                 .iter()
                 .copied()
-                .min_by_key(|&i| slide.elements[i].rect.y);
+                .filter_map(|i| slide.elements.get(i).map(|e| (i, e.rect.y)))
+                .min_by_key(|(_, y)| *y)
+                .map(|(i, _)| i);
             let right_top_i = right
                 .iter()
                 .copied()
-                .min_by_key(|&i| slide.elements[i].rect.y);
+                .filter_map(|i| slide.elements.get(i).map(|e| (i, e.rect.y)))
+                .min_by_key(|(_, y)| *y)
+                .map(|(i, _)| i);
             if let (Some(li), Some(ri)) = (left_top_i, right_top_i) {
-                let lt = slide.elements[li].rect.y;
-                let rt = slide.elements[ri].rect.y;
-                let diff = (lt - rt).abs();
+                // SAFETY: li and ri came from filter_map over slide.elements indices; they are always valid.
+                let lel = slide.elements.get(li).unwrap_or_else(|| unreachable!());
+                let rel = slide.elements.get(ri).unwrap_or_else(|| unreachable!());
+                let diff = (lel.rect.y - rel.rect.y).abs();
                 if diff > threshold {
-                    // Snap the lagging column's first element up to match the earlier one.
-                    let (target_i, target_y) = if lt > rt { (li, rt) } else { (ri, lt) };
+                    let (target_name, target_y) = if lel.rect.y > rel.rect.y {
+                        (lel.name.clone(), rel.rect.y)
+                    } else {
+                        (rel.name.clone(), lel.rect.y)
+                    };
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
@@ -88,7 +98,7 @@ impl Rule for ColumnTopEdgeRule {
                         severity: Severity::Warning,
                         fix: Some(Fix::SetY {
                             slide_idx: slide.index,
-                            element_name: slide.elements[target_i].name.clone(),
+                            element_name: target_name,
                             y: target_y,
                         }),
                     });
@@ -117,19 +127,22 @@ impl Rule for ColumnRightLeftEdgeRule {
                 continue;
             }
             let xs: Vec<i64> = right.iter().map(|&i| slide.elements[i].rect.x).collect();
-            let Some(exp) = median(&xs) else { continue };
+            // SAFETY: xs is 1:1 with right; right.len() >= 2 above, so xs is non-empty.
+            let exp = median(&xs).unwrap_or_else(|| unreachable!());
             for &i in &right {
-                let diff = (slide.elements[i].rect.x - exp).abs();
+                // SAFETY: detect() builds indices from slide.elements.iter().enumerate(); they are always valid.
+                let el = slide.elements.get(i).unwrap_or_else(|| unreachable!());
+                let diff = (el.rect.x - exp).abs();
                 if diff > threshold {
                     violations.push(Violation {
                         rule_id: self.id(),
                         slide: Some(slide.index + 1),
-                        element: Some(slide.elements[i].id),
+                        element: Some(el.id),
                         message: ViolationMessage::EdgeOff { diff_emu: diff },
                         severity: Severity::Warning,
                         fix: Some(Fix::SetX {
                             slide_idx: slide.index,
-                            element_name: slide.elements[i].name.clone(),
+                            element_name: el.name.clone(),
                             x: exp,
                         }),
                     });

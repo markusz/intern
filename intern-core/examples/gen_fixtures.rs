@@ -13,13 +13,10 @@ fn rect(name: &str, x: u32, y: u32, w: u32, h: u32) -> Shape {
 }
 
 fn save(filename: &str, title: &str, slides: Vec<SlideContent>) {
-    // SAFETY: all three operations are unrecoverable in a fixture-generation binary -
-    // if we can't create the PPTX or write the file, there's nothing to fall back to.
     let bytes = create_pptx_with_content(title, slides).expect("generate pptx");
-    // SAFETY: CARGO_MANIFEST_DIR is always a subdirectory, never the filesystem root.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .unwrap()
+        .expect("CARGO_MANIFEST_DIR has a parent")
         .join("fixtures");
     fs::create_dir_all(&dir).expect("create fixtures/");
     let path = dir.join(filename);

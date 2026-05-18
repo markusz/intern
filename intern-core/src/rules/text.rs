@@ -98,8 +98,8 @@ impl Rule for BodyFontFamilyRule {
         }
 
         let families: Vec<String> = familied.iter().map(|(_, _, f)| f.clone()).collect();
-        // SAFETY: familied.len() >= 2 ensures families is non-empty.
-        let expected = mode(&families).unwrap();
+        // SAFETY: familied.len() >= 2 above; mode returns None only for empty input.
+        let expected = mode(&families).unwrap_or_else(|| unreachable!());
 
         familied
             .iter()
@@ -136,8 +136,8 @@ impl Rule for BodyTextColorRule {
         }
 
         let colors: Vec<String> = colored.iter().map(|(_, _, c)| c.clone()).collect();
-        // SAFETY: colored.len() >= 2 ensures colors is non-empty.
-        let expected = mode(&colors).unwrap();
+        // SAFETY: colored.len() >= 2 above; mode returns None only for empty input.
+        let expected = mode(&colors).unwrap_or_else(|| unreachable!());
 
         colored
             .iter()

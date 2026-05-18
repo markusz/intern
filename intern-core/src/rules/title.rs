@@ -39,9 +39,8 @@ impl Rule for TitleYRule {
             return vec![];
         }
         let ys: Vec<i64> = ts.iter().map(|(_, e)| e.rect.y).collect();
-        let Some(expected) = median(&ys) else {
-            return vec![];
-        };
+        // SAFETY: ys is 1:1 with ts; ts.len() >= 2 above, so ys is non-empty.
+        let expected = median(&ys).unwrap_or_else(|| unreachable!());
         ts.iter()
             .filter(|(_, e)| (e.rect.y - expected).abs() > threshold)
             .map(|(idx, e)| Violation {
@@ -76,12 +75,9 @@ impl Rule for TitleXWidthRule {
         }
         let xs: Vec<i64> = ts.iter().map(|(_, e)| e.rect.x).collect();
         let ws: Vec<i64> = ts.iter().map(|(_, e)| e.rect.w).collect();
-        let Some(exp_x) = median(&xs) else {
-            return vec![];
-        };
-        let Some(exp_w) = median(&ws) else {
-            return vec![];
-        };
+        // SAFETY: xs and ws are 1:1 with ts; ts.len() >= 2 above, so both are non-empty.
+        let exp_x = median(&xs).unwrap_or_else(|| unreachable!());
+        let exp_w = median(&ws).unwrap_or_else(|| unreachable!());
 
         ts.iter()
             .filter_map(|(idx, e)| {
@@ -131,12 +127,11 @@ impl Rule for TitleFontSizeRule {
         for (_, _, _, sz) in &sized {
             *counts.entry(*sz).or_default() += 1;
         }
-        // SAFETY: sized.len() >= 2 ensures counts is non-empty, so max_by_key returns Some.
-        let expected = *counts
+        // SAFETY: sized.len() >= 2 above, so counts is non-empty.
+        let (&expected, _) = counts
             .iter()
             .max_by_key(|(_, c)| *c)
-            .map(|(sz, _)| sz)
-            .unwrap();
+            .unwrap_or_else(|| unreachable!());
 
         sized
             .iter()

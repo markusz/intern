@@ -93,12 +93,10 @@ fn render_table(violations: &[Finding], group_by: GroupBy) -> String {
     };
 
     // Cap variable-width columns so the table stays readable.
-    // SAFETY: the header always has 7 columns, so these indices always exist.
     for (col, width) in [(2, 12), (3, 16), (4, 6), (5, 50), (6, 52)] {
-        table
-            .column_mut(col)
-            .unwrap()
-            .set_constraint(ColumnConstraint::UpperBoundary(Width::Fixed(width)));
+        if let Some(c) = table.column_mut(col) {
+            c.set_constraint(ColumnConstraint::UpperBoundary(Width::Fixed(width)));
+        }
     }
 
     let mut current_group: Option<String> = None;
@@ -291,8 +289,13 @@ fn render_json(results: &[(String, Vec<Finding>)]) -> String {
         })
         .collect();
     let output = serde_json::json!({ "files": files });
-    // SAFETY: the value holds only strings, numbers, and arrays - serialization is infallible.
-    serde_json::to_string_pretty(&output).unwrap()
+    match serde_json::to_string_pretty(&output) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("intern: failed to serialize JSON output: {e}");
+            String::from("{}")
+        }
+    }
 }
 
 #[cfg(test)]

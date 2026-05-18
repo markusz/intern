@@ -62,22 +62,33 @@ impl Element {
                         attrs,
                         ..Element::default()
                     };
-                    // SAFETY: stack always holds at least the synthetic root.
-                    stack.last_mut().unwrap().children.push(leaf);
+                    stack
+                        .last_mut()
+                        .ok_or_else(|| ParseError("empty parse stack".into()))?
+                        .children
+                        .push(leaf);
                 }
                 Event::Text(ref e) => {
                     if let Ok(text) = e.unescape()
                         && !text.is_empty()
                     {
-                        // SAFETY: stack always holds at least the synthetic root.
-                        stack.last_mut().unwrap().text.push_str(&text);
+                        stack
+                            .last_mut()
+                            .ok_or_else(|| ParseError("empty parse stack".into()))?
+                            .text
+                            .push_str(&text);
                     }
                 }
                 Event::End(_) => {
                     if stack.len() > 1 {
-                        // SAFETY: len > 1 guarantees both pop() and last_mut() succeed.
-                        let finished = stack.pop().unwrap();
-                        stack.last_mut().unwrap().children.push(finished);
+                        let finished = stack
+                            .pop()
+                            .ok_or_else(|| ParseError("empty parse stack".into()))?;
+                        stack
+                            .last_mut()
+                            .ok_or_else(|| ParseError("empty parse stack".into()))?
+                            .children
+                            .push(finished);
                     }
                 }
                 Event::Eof => break,
@@ -86,8 +97,9 @@ impl Element {
             buf.clear();
         }
 
-        // SAFETY: synthetic root is always present.
-        let mut root = stack.pop().unwrap();
+        let mut root = stack
+            .pop()
+            .ok_or_else(|| ParseError("empty parse stack".into()))?;
         root.children
             .pop()
             .ok_or_else(|| ParseError("empty document".into()))
