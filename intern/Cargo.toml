@@ -1,15 +1,15 @@
 [package]
 name = "intern"
-version = "0.7.2"
-edition = "2024"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 publish = false
 description = "A rule-based linter for PowerPoint (.pptx) files"
 repository = "https://github.com/markusz/intern"
 homepage = "https://markusz.github.io/intern/"
 
 [dependencies]
-intern-core = { path = "../intern-core", version = "0.7.0" }
+intern-core = { path = "../intern-core" }
 clap = { version = "4.6.1", features = ["derive"] }
 comfy-table = "7"
 miette = { version = "7", features = ["fancy"] }

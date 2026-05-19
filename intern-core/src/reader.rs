@@ -71,11 +71,8 @@ fn parse_slide(index: usize, slide_xml: &str) -> Result<SlideData, Error> {
 
 fn parse_sp(sp: &xml::Element) -> Option<SlideElement> {
     let cnv_pr = sp.find_descendant("cNvPr")?;
-    let id: u32 = cnv_pr.attr("id").and_then(|s| s.parse().ok()).or_else(|| {
-        let name = cnv_pr.attr("name").unwrap_or("?");
-        eprintln!("intern: shape '{name}' has no cNvPr id - skipped");
-        None
-    })?;
+    // A shape with no cNvPr id cannot be referenced by any rule, so skip it.
+    let id: u32 = cnv_pr.attr("id")?.parse().ok()?;
     let name = cnv_pr.attr("name").unwrap_or("").to_string();
     let rect = parse_rect(sp)?;
     if rect.w <= 0 || rect.h <= 0 {
@@ -216,14 +213,8 @@ fn collect_para_text(
 
 fn parse_pic(pic: &xml::Element) -> Option<SlideElement> {
     let cnv_pr = pic.find_descendant("cNvPr");
-    let id: u32 = cnv_pr
-        .and_then(|e| e.attr("id"))
-        .and_then(|s| s.parse().ok())
-        .or_else(|| {
-            let name = cnv_pr.and_then(|e| e.attr("name")).unwrap_or("?");
-            eprintln!("intern: picture '{name}' has no cNvPr id - skipped");
-            None
-        })?;
+    // A picture with no cNvPr id cannot be referenced by any rule, so skip it.
+    let id: u32 = cnv_pr.and_then(|e| e.attr("id"))?.parse().ok()?;
     let name = cnv_pr
         .and_then(|e| e.attr("name"))
         .unwrap_or("Picture")
@@ -292,7 +283,15 @@ fn walk_shapes(node: &xml::Element, transforms: &[GroupTransform]) -> Vec<SlideE
     elements
 }
 
+/// Maximum `<p:grpSp>` nesting depth the reader walks. PowerPoint nests groups
+/// only a handful deep in practice; the cap bounds recursion so a hand-crafted
+/// deck with pathological nesting cannot overflow the stack.
+const MAX_GROUP_NESTING: usize = 100;
+
 fn enter_group(grp: &xml::Element, parent_transforms: &[GroupTransform]) -> Vec<SlideElement> {
+    if parent_transforms.len() >= MAX_GROUP_NESTING {
+        return vec![];
+    }
     let Some(transform) = parse_group_transform(grp) else {
         return vec![];
     };
@@ -941,6 +940,26 @@ mod tests {
         </p:sld>"#;
         let slide = parse_slide(0, slide_xml).unwrap();
         assert!(slide.elements.is_empty());
+    }
+
+    #[test]
+    fn deeply_nested_groups_are_capped() {
+        // Groups nested past MAX_GROUP_NESTING are not walked, so the innermost
+        // shape is dropped rather than overflowing the stack on adversarial input.
+        let group = r#"<p:grpSp><p:nvGrpSpPr><p:cNvPr id="1" name="g"/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/><a:chOff x="0" y="0"/><a:chExt cx="100" cy="100"/></a:xfrm></p:grpSpPr>"#;
+        let sp = r#"<p:sp><p:nvSpPr><p:cNvPr id="999" name="Deep"/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="10" cy="10"/></a:xfrm></p:spPr></p:sp>"#;
+        let depth = super::MAX_GROUP_NESTING + 5;
+        let slide_xml = format!(
+            r#"<p:sld xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree>{}{}{}</p:spTree></p:cSld></p:sld>"#,
+            group.repeat(depth),
+            sp,
+            "</p:grpSp>".repeat(depth),
+        );
+        let slide = parse_slide(0, &slide_xml).unwrap();
+        assert!(
+            slide.elements.iter().all(|e| e.name != "Deep"),
+            "a shape nested past the cap should be dropped"
+        );
     }
 
     #[test]

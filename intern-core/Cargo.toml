@@ -1,8 +1,8 @@
 [package]
 name = "intern-core"
-version = "0.7.2"
-edition = "2024"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 description = "The rule engine behind intern, a linter for PowerPoint (.pptx) files"
 repository = "https://github.com/markusz/intern"
 readme = "README.md"

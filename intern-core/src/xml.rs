@@ -4,6 +4,12 @@ use std::str;
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 
+/// Maximum XML element nesting depth accepted by `Element::parse`. Real PPTX
+/// parts nest only tens of levels deep; the cap rejects pathologically deep
+/// input so that neither tree traversal nor the recursive `Drop` of the parsed
+/// tree can overflow the stack.
+const MAX_DEPTH: usize = 1000;
+
 /// Lightweight XML parse error.
 #[derive(Debug)]
 pub struct ParseError(pub String);
@@ -46,6 +52,9 @@ impl Element {
                 .map_err(|e| ParseError(e.to_string()))?
             {
                 Event::Start(ref e) => {
+                    if stack.len() > MAX_DEPTH {
+                        return Err(ParseError("XML nesting exceeds the maximum depth".into()));
+                    }
                     let tag = strip_prefix(e.local_name().as_ref());
                     let attrs = parse_attrs(e)?;
                     stack.push(Element {
@@ -138,20 +147,18 @@ impl Element {
         None
     }
 
-    /// Returns all descendants with the given local tag name, depth-first.
+    /// Returns all descendants with the given local tag name, depth-first
+    /// pre-order. Iterative, so deeply nested input cannot overflow the stack.
     pub fn find_all_descendants(&self, tag: &str) -> Vec<&Self> {
         let mut out = Vec::new();
-        collect_descendants(self, tag, &mut out);
-        out
-    }
-}
-
-fn collect_descendants<'a>(node: &'a Element, tag: &str, out: &mut Vec<&'a Element>) {
-    for child in &node.children {
-        if child.tag == tag {
-            out.push(child);
+        let mut stack: Vec<&Element> = self.children.iter().rev().collect();
+        while let Some(node) = stack.pop() {
+            if node.tag == tag {
+                out.push(node);
+            }
+            stack.extend(node.children.iter().rev());
         }
-        collect_descendants(child, tag, out);
+        out
     }
 }
 
@@ -240,6 +247,15 @@ mod tests {
     fn find_all_descendants_collects_all_matching() {
         let el = parse(r#"<root><a/><x><a/></x></root>"#);
         assert_eq!(el.find_all_descendants("a").len(), 2);
+    }
+
+    #[test]
+    fn parse_rejects_pathologically_deep_xml() {
+        // A tree this deep would overflow the stack when traversed or dropped;
+        // parsing must reject it rather than build it.
+        let depth = 5_000;
+        let xml = format!("{}<t/>{}", "<n>".repeat(depth), "</n>".repeat(depth));
+        assert!(Element::parse(&xml).is_err());
     }
 
     #[test]

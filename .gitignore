@@ -1,6 +1,7 @@
 /target
 PLAN.md
 **/*.pptx
+**/*.pptx.bak
 !fixtures/*.pptx
 .DS_Store
 /docs/book
