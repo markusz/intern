@@ -239,7 +239,9 @@ impl Rule for TitleTrailingPunctRule {
             .filter_map(|(idx, e)| {
                 let text = title_text(e);
                 let last = text.chars().last()?;
-                matches!(last, '.' | '!' | '?').then(|| Violation {
+                // `?` and `!` are legitimate title endings; only prose
+                // punctuation makes a title read like an unfinished sentence.
+                matches!(last, '.' | ',' | ':' | ';').then(|| Violation {
                     rule_id: self.id(),
                     slide: Some(idx + 1),
                     element: Some(e.id),
@@ -513,15 +515,28 @@ mod tests {
     }
 
     #[test]
-    fn title_trailing_punct_fires_on_exclamation() {
-        let slides = vec![titled(0, 274_638, None, "Wow!")];
-        assert_eq!(TitleTrailingPunctRule.check(&slides, &THRESHOLD).len(), 1);
+    fn title_trailing_punct_fires_on_comma_colon_semicolon() {
+        // A title ending in prose punctuation reads like an unfinished sentence.
+        for (text, punct) in [("Results,", ','), ("Agenda:", ':'), ("Summary;", ';')] {
+            let slides = vec![titled(0, 274_638, None, text)];
+            let v = TitleTrailingPunctRule.check(&slides, &THRESHOLD);
+            assert_eq!(v.len(), 1, "expected '{text}' to fire");
+            assert!(matches!(
+                v[0].message,
+                ViolationMessage::TitleTrailingPunct { punct: p } if p == punct
+            ));
+        }
     }
 
     #[test]
-    fn title_trailing_punct_colon_is_ok() {
-        // Colons are legitimate in titles ("Results: 2024")
-        let slides = vec![titled(0, 274_638, None, "Results: 2024")];
-        assert!(TitleTrailingPunctRule.check(&slides, &THRESHOLD).is_empty());
+    fn title_trailing_punct_allows_question_and_exclamation() {
+        // "Why Cloud?" and "Ship It!" are legitimate titles, not prose.
+        for text in ["Why Cloud?", "Ship It!"] {
+            let slides = vec![titled(0, 274_638, None, text)];
+            assert!(
+                TitleTrailingPunctRule.check(&slides, &THRESHOLD).is_empty(),
+                "expected '{text}' to be clean"
+            );
+        }
     }
 }

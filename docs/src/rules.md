@@ -76,7 +76,7 @@ not its individual children.
 |---|---|---|---|
 | `TITLE_PRESENT` | **off** | Slide has no title element | - |
 | `TITLE_LENGTH` | on | Title is too long | 10 words |
-| `TITLE_TRAILING_PUNCT` | on | Title ends with `.` `!` or `?` | - |
+| `TITLE_TRAILING_PUNCT` | on | Title ends with `.` `,` `:` or `;` | - |
 | `DUPLICATE_TITLE` | on | Title text is duplicated on another slide | - |
 | `EMPTY_TEXTBOX` | on | Text box has no text content | - |
 | `SLIDE_COUNT` | **off** | Deck has too many slides | 20 slides |

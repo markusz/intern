@@ -19,6 +19,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- `TITLE_TRAILING_PUNCT` now flags titles ending in `.` `,` `:` `;` and allows
+  `?` and `!` (previously it flagged `.` `!` `?`). Question and exclamation marks
+  are legitimate title endings; only prose punctuation is flagged.
 - `RULES.md` rewritten as a full reference: every rule now documents what it does,
   why it matters, its defaults, and (for spatial rules) an example diagram.
 
