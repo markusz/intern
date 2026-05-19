@@ -35,17 +35,20 @@ Never used a command-line tool? Three steps.
 `intern` prints one row per problem:
 
 ```text
-  Slide  Rule                  Element   Message
-  ─────────────────────────────────────────────────────────────────────
-  2      TITLE_Y               Title 2   title is 34.2px lower than on most slides
-  4      TITLE_TRAILING_PUNCT  -         title ends with '.' - remove it
-
-2 violation(s) (2 error, 0 warning)
+┌───────┬──────────────────────┬─────────┬────────────────┬──────┬───────────────────────────────────┬─────────────────────────────────────────┐
+│ Slide ┆ Rule                 ┆ Type    ┆ Position       ┆ Id   ┆ Text                              ┆ Message                                 │
+╞═══════╪══════════════════════╪═════════╪════════════════╪══════╪═══════════════════════════════════╪═════════════════════════════════════════╡
+│ 2     ┆ BULLET_LENGTH        ┆ Body    ┆ (40px, 132px)  ┆ 5    ┆ Our goals for the next quarter... ┆ bullet is 26 words (20-word limit)      │
+│ 2     ┆ RIGHT_MARGIN         ┆ Body    ┆ (40px, 132px)  ┆ 5    ┆ Our goals for the next quarter... ┆ right edge at 905.4px (typical 927.0px) │
+│       ┆                      ┆         ┆                ┆      ┆                                   ┆                                         │
+│ 4     ┆ TITLE_TRAILING_PUNCT ┆ Title   ┆ (28px, 15px)   ┆ 12   ┆ Project Status.                   ┆ title ends with '.' - remove it         │
+└───────┴──────────────────────┴─────────┴────────────────┴──────┴───────────────────────────────────┴─────────────────────────────────────────┘
+3 violation(s) (3 error, 0 warning)
 ```
 
 - **Slide** - where the problem is (slide 1 is the first slide).
 - **Rule** - the check that fired; look it up in the [Rules reference](./rules.md).
-- **Element** - the shape involved, or `-` for a whole-slide problem.
+- **Type / Position / Id / Text** - the offending element: its kind, top-left corner, shape id, and a short text excerpt. All `-` for a whole-slide problem.
 - **Message** - what is wrong, in plain words.
 
 A clean deck prints `No violations found.`
@@ -197,8 +200,11 @@ JSON output nests violations under each file:
         {
           "rule_id": "TITLE_Y",
           "slide": 2,
-          "element": "Title 2",
-          "message": "title is 34.2px lower than on most slides",
+          "element_type": "Title",
+          "element_position": "(28px, 47px)",
+          "element_id": 12,
+          "excerpt": "Project Status",
+          "message": "title 34.2px lower than most slides",
           "severity": "error"
         }
       ]

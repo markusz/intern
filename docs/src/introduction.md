@@ -14,14 +14,19 @@ and CI-friendly.
 ```text
 $ intern check quarterly.pptx
 
-  Slide  Rule                  Element   Message
-  ─────────────────────────────────────────────────────────────────────
-  2      TITLE_Y               Title 2   title is 34.2px lower than on most slides
-  3      FONT_SIZE_VARIETY     -         4 distinct body font sizes (limit: 3)
-  4      TITLE_TRAILING_PUNCT  -         title ends with '.' - remove it
-  7      DUPLICATE_TITLE       Title 7   same title as slide 2
-
-4 violation(s) (4 error, 0 warning)
+┌───────┬──────────────────────┬─────────┬────────────────┬──────┬───────────────────────────────────┬─────────────────────────────────────────┐
+│ Slide ┆ Rule                 ┆ Type    ┆ Position       ┆ Id   ┆ Text                              ┆ Message                                 │
+╞═══════╪══════════════════════╪═════════╪════════════════╪══════╪═══════════════════════════════════╪═════════════════════════════════════════╡
+│ -     ┆ FONT_SIZE_VARIETY    ┆ -       ┆ -              ┆ -    ┆ -                                 ┆ 8 distinct body font sizes (limit: 3)   │
+│       ┆                      ┆         ┆                ┆      ┆                                   ┆                                         │
+│ 2     ┆ BULLET_LENGTH        ┆ Body    ┆ (40px, 132px)  ┆ 5    ┆ Our goals for the next quarter... ┆ bullet is 26 words (20-word limit)      │
+│ 2     ┆ RIGHT_MARGIN         ┆ Body    ┆ (40px, 132px)  ┆ 5    ┆ Our goals for the next quarter... ┆ right edge at 905.4px (typical 927.0px) │
+│       ┆                      ┆         ┆                ┆      ┆                                   ┆                                         │
+│ 4     ┆ TITLE_TRAILING_PUNCT ┆ Title   ┆ (28px, 15px)   ┆ 12   ┆ Project Status.                   ┆ title ends with '.' - remove it         │
+│       ┆                      ┆         ┆                ┆      ┆                                   ┆                                         │
+│ 8     ┆ DUPLICATE_TITLE      ┆ Title   ┆ (28px, 15px)   ┆ 44   ┆ Overview                          ┆ same title as slide 6                   │
+└───────┴──────────────────────┴─────────┴────────────────┴──────┴───────────────────────────────────┴─────────────────────────────────────────┘
+5 violation(s) (5 error, 0 warning)
 ```
 
 ## How it works

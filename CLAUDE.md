@@ -19,6 +19,10 @@ Push back when a request has bad ROI - a library limitation that makes something
 
 Never run `git commit` or `git push` on your own. The user handles all commits and pushes. You may point out when a good moment to commit has arrived, but never do it unless the user explicitly tells you to in that specific instance - blanket or prior permission does not carry over.
 
+## Docs
+
+`README.md`, `RULES.md`, and the mdBook under `docs/src/` overlap heavily - the same rule tables, examples, and output snippets are duplicated across them. When you change any user-facing doc, grep the others for the same content and update every copy in the same pass. A fix that lands in one file but not its mirror is a regression - sweep, don't patch one spot at a time.
+
 ## Code style
 
 - No panicking code unless the error is truly unrecoverable or the invariant is provably safe. In either case add a `// SAFETY:` comment explaining why.

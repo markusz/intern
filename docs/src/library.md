@@ -14,15 +14,20 @@ intern-core = { git = "https://github.com/markusz/intern" }
 use intern_core::{
     model::EMU_PER_PX,
     reader::read_presentation,
-    rules::{all_rules, Limits},
+    rules::{all_rules, Limits, RuleContext},
 };
 
-let slides = read_presentation("deck.pptx")?;
+let pres = read_presentation("deck.pptx")?;
+let ctx = RuleContext {
+    threshold: 2 * EMU_PER_PX,
+    slide_width: pres.slide_width,
+    slide_height: pres.slide_height,
+};
 let limits = Limits { slide_count: 30, ..Limits::default() };
 
 let violations: Vec<_> = all_rules(&limits)
     .iter()
-    .flat_map(|rule| rule.check(&slides, 2 * EMU_PER_PX))
+    .flat_map(|rule| rule.check(&pres.slides, &ctx))
     .collect();
 
 for v in &violations {
@@ -32,10 +37,11 @@ for v in &violations {
 
 ## Key types
 
-- **`reader::read_presentation`** - parses a `.pptx` into `Vec<SlideData>`.
+- **`reader::read_presentation`** - parses a `.pptx` into a `Presentation` (its
+  `slides` plus the deck's slide dimensions).
 - **`rules::all_rules`** - builds every rule, parameterised by `Limits`.
-- **`rules::Rule`** - the trait each rule implements: `check(&slides, threshold)`
-  returns a `Vec<Violation>`.
+- **`rules::Rule`** - the trait each rule implements: `check(slides, ctx)` takes a
+  `&[SlideData]` and a `&RuleContext` and returns a `Vec<Violation>`.
 - **`rules::Violation`** - carries the rule id, slide, element, a structured
   `ViolationMessage`, and an optional `Fix`.
 - **`writer::apply_fixes`** - applies a slice of `Fix` values to a `.pptx` in place.
