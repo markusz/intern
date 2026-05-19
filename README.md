@@ -179,9 +179,11 @@ median title position) either.
 
 ## Rules
 
-29 rules across four categories. Rules marked **off** require `enabled = true` in
-`[rules.<RULE_ID>]` or `--rules <ID>` to run. Any on-by-default rule can be
-suppressed with `--disable`.
+29 rules across four categories. For each rule: what it does, why it matters,
+defaults, and examples - see **[RULES.md](RULES.md)**.
+
+Rules marked **off** require `enabled = true` in `[rules.<RULE_ID>]` or
+`--rules <ID>` to run. Any on-by-default rule can be suppressed with `--disable`.
 
 ### Alignment
 
@@ -231,8 +233,6 @@ suppressed with `--disable`.
 | `EMPTY_TEXTBOX` | on | Text box has no text content |
 | `TITLE_PRESENT` | **off** | Slide has no title element |
 | `SLIDE_COUNT` | **off** | Deck has too many slides |
-
-The geometric rules, illustrated with diagrams: [RULES.md](RULES.md)
 
 ---
 
