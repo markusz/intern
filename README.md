@@ -187,7 +187,7 @@ Rules marked **off** require `enabled = true` in `[rules.<RULE_ID>]` or
 
 ### Alignment
 
-| Rule | Status | What it catches |
+| Rule | Default | What it catches |
 |---|---|---|
 | `LEFT_MARGIN` | on | Slide's leftmost unit is off the typical left margin |
 | `RIGHT_MARGIN` | on | Slide's rightmost unit right edge is off the typical right margin |
@@ -202,7 +202,7 @@ Rules marked **off** require `enabled = true` in `[rules.<RULE_ID>]` or
 
 ### Typography
 
-| Rule | Status | What it catches |
+| Rule | Default | What it catches |
 |---|---|---|
 | `TITLE_FONT_SIZE` | on | Title font size differs from the majority |
 | `FONT_SIZE_VARIETY` | on | Too many distinct body font sizes across the deck |
@@ -213,7 +213,7 @@ Rules marked **off** require `enabled = true` in `[rules.<RULE_ID>]` or
 
 ### Text quality
 
-| Rule | Status | What it catches |
+| Rule | Default | What it catches |
 |---|---|---|
 | `DOUBLE_SPACE` | on | Paragraph contains two or more consecutive spaces |
 | `LEADING_SPACE` | on | Paragraph starts with whitespace |
@@ -225,7 +225,7 @@ Rules marked **off** require `enabled = true` in `[rules.<RULE_ID>]` or
 
 ### Structure
 
-| Rule | Status | What it catches |
+| Rule | Default | What it catches |
 |---|---|---|
 | `TITLE_LENGTH` | on | Title is too long |
 | `TITLE_TRAILING_PUNCT` | on | Title ends with `.` `!` or `?` |
