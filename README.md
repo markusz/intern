@@ -251,12 +251,21 @@ intern-core = { git = "https://github.com/markusz/intern" }
 ```
 
 ```rust
-use intern_core::{reader::read_presentation, rules::{all_rules, Limits}, model::EMU_PER_PX};
+use intern_core::{
+    model::EMU_PER_PX,
+    reader::read_presentation,
+    rules::{all_rules, Limits, RuleContext},
+};
 
-let slides = read_presentation("deck.pptx")?;
+let pres = read_presentation("deck.pptx")?;
+let ctx = RuleContext {
+    threshold: 2 * EMU_PER_PX,
+    slide_width: pres.slide_width,
+    slide_height: pres.slide_height,
+};
 let limits = Limits { slide_count: 30, ..Limits::default() };
 let violations: Vec<_> = all_rules(&limits)
     .iter()
-    .flat_map(|r| r.check(&slides, 2 * EMU_PER_PX))
+    .flat_map(|r| r.check(&pres.slides, &ctx))
     .collect();
 ```
