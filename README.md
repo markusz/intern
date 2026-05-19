@@ -162,7 +162,7 @@ You can also edit the notes by hand. To skip an entire slide:
 
 ```text
 intern: disable                        # skip every rule on this slide
-intern: disable TITLE_Y, GRID_ROW_TOP  # skip only these rules
+intern: disable TITLE_Y, DUPLICATE_TITLE  # skip only these rules
 ```
 
 To suppress a rule for one element only (use the id shown in the **Id** column):
@@ -179,7 +179,7 @@ median title position) either.
 
 ## Rules
 
-36 rules across four categories. Rules marked **off** require `enabled = true` in
+29 rules across four categories. Rules marked **off** require `enabled = true` in
 `[rules.<RULE_ID>]` or `--rules <ID>` to run. Any on-by-default rule can be
 suppressed with `--disable`.
 
@@ -197,13 +197,6 @@ suppressed with `--disable`.
 | `TITLE_X_WIDTH` | on | Title left-edge or width inconsistent across slides |
 | `TEXT_ELEMENT_OVERLAP` | on | Two text-bearing elements on the same slide have overlapping rects |
 | `ELEMENT_OVERFLOW` | on | Element extends outside the slide bounds |
-| `COLUMN_LEFT_EDGE` | **off** | Left-column elements have inconsistent left edges |
-| `COLUMN_TOP_EDGE` | **off** | Left and right columns don't start at the same Y |
-| `COLUMN_RIGHT_LEFT_EDGE` | **off** | Right-column elements have inconsistent left edges |
-| `GRID_H_SPACING` | **off** | Horizontal gaps between grid elements are uneven |
-| `GRID_V_SPACING` | **off** | Vertical gaps between grid elements are uneven |
-| `GRID_ROW_TOP` | **off** | Elements in the same grid row have misaligned top edges |
-| `GRID_COL_LEFT` | **off** | Elements in the same grid column have misaligned left edges |
 
 ### Typography
 

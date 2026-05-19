@@ -32,21 +32,6 @@ not its individual children.
 | `CLOSE_X` | on | Two units on the same slide have X positions within threshold - likely misaligned | 5 px |
 | `CLOSE_Y` | on | Two units on the same slide have Y positions within threshold - likely misaligned | 5 px |
 
-### Layout detection
-
-These rules require a layout detector to identify columns and grids. The detector
-is unreliable on varied decks; prefer `CLOSE_X` / `CLOSE_Y` instead.
-
-| Rule | Status | What it catches | Default threshold |
-|---|---|---|---|
-| `COLUMN_LEFT_EDGE` | **off** | Left-column elements have inconsistent left edges | 2 px |
-| `COLUMN_TOP_EDGE` | **off** | Left and right columns don't start at the same Y | 2 px |
-| `COLUMN_RIGHT_LEFT_EDGE` | **off** | Right-column elements have inconsistent left edges | 2 px |
-| `GRID_H_SPACING` | **off** | Horizontal gaps between grid elements are uneven | 2 px |
-| `GRID_V_SPACING` | **off** | Vertical gaps between grid elements are uneven | 2 px |
-| `GRID_ROW_TOP` | **off** | Elements in the same grid row have misaligned top edges | 2 px |
-| `GRID_COL_LEFT` | **off** | Elements in the same grid column have misaligned left edges | 2 px |
-
 ### Other alignment
 
 | Rule | Status | What it catches |

@@ -1,5 +1,3 @@
-pub mod columns;
-pub mod grid;
 pub mod layout;
 pub mod margin;
 pub mod text;
@@ -128,12 +126,6 @@ pub enum Severity {
 /// so callers can inspect them programmatically; `Display` renders the human-readable form.
 #[derive(Debug, Clone)]
 pub enum ViolationMessage {
-    /// An element's edge deviates from its peers by `diff_emu`.
-    EdgeOff { diff_emu: i64 },
-    /// Left and right column top edges are misaligned by `diff_emu`.
-    ColumnTopMisaligned { diff_emu: i64 },
-    /// A gap between two elements is `actual_emu`; the expected value is `expected_emu`.
-    GapUneven { actual_emu: i64, expected_emu: i64 },
     /// Title Y position is `actual_emu`; the majority value is `expected_emu`.
     TitleYOff { actual_emu: i64, expected_emu: i64 },
     /// Title X and/or width deviate from peers. `None` means that dimension is within threshold.
@@ -208,27 +200,6 @@ const EMU_PER_PX: f64 = 9525.0;
 impl fmt::Display for ViolationMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EdgeOff { diff_emu } => {
-                write!(
-                    f,
-                    "edge {:.1}px off from peers",
-                    *diff_emu as f64 / EMU_PER_PX
-                )
-            }
-            Self::ColumnTopMisaligned { diff_emu } => write!(
-                f,
-                "left/right column top edges misaligned by {:.1}px",
-                *diff_emu as f64 / EMU_PER_PX
-            ),
-            Self::GapUneven {
-                actual_emu,
-                expected_emu,
-            } => write!(
-                f,
-                "gap {:.1}px, expected ~{:.1}px",
-                *actual_emu as f64 / EMU_PER_PX,
-                *expected_emu as f64 / EMU_PER_PX,
-            ),
             Self::TitleYOff {
                 actual_emu,
                 expected_emu,
@@ -440,13 +411,6 @@ pub fn all_rules(limits: &Limits) -> Vec<Box<dyn Rule>> {
         Box::new(title::TitleYRule),
         Box::new(title::TitleXWidthRule),
         Box::new(title::TitleFontSizeRule),
-        Box::new(columns::ColumnLeftEdgeRule),
-        Box::new(columns::ColumnTopEdgeRule),
-        Box::new(columns::ColumnRightLeftEdgeRule),
-        Box::new(grid::GridHSpacingRule),
-        Box::new(grid::GridVSpacingRule),
-        Box::new(grid::GridRowTopRule),
-        Box::new(grid::GridColLeftRule),
         Box::new(text::FontSizeVariationRule {
             limit: limits.font_sizes,
         }),
@@ -491,30 +455,6 @@ pub fn all_rules(limits: &Limits) -> Vec<Box<dyn Rule>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn violation_message_edge_off_display() {
-        let m = ViolationMessage::EdgeOff { diff_emu: 95_250 };
-        assert_eq!(m.to_string(), "edge 10.0px off from peers");
-    }
-
-    #[test]
-    fn violation_message_column_top_misaligned_display() {
-        let m = ViolationMessage::ColumnTopMisaligned { diff_emu: 19_050 };
-        assert_eq!(
-            m.to_string(),
-            "left/right column top edges misaligned by 2.0px"
-        );
-    }
-
-    #[test]
-    fn violation_message_gap_uneven_display() {
-        let m = ViolationMessage::GapUneven {
-            actual_emu: 190_500,
-            expected_emu: 95_250,
-        };
-        assert_eq!(m.to_string(), "gap 20.0px, expected ~10.0px");
-    }
 
     #[test]
     fn violation_message_title_y_off_display() {

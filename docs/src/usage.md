@@ -102,7 +102,7 @@ intern: disable
 To exclude it from only **specific** rules, list their ids:
 
 ```text
-intern: disable TITLE_Y, GRID_ROW_TOP
+intern: disable TITLE_Y, DUPLICATE_TITLE
 ```
 
 Either way the slide is dropped before those rules run, so it affects neither the

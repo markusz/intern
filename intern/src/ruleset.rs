@@ -9,19 +9,11 @@ use crate::config::Config;
 /// - `ALL_CAPS`: common in corporate decks for callouts, KPIs, labels.
 /// - `BODY_TEXT_COLOR`: color varies intentionally; mode-based comparison produces noise.
 /// - `SLIDE_COUNT`: limit is too deck-specific to have a useful default.
-/// - `GRID_*` / `COLUMN_*`: layout detector is unreliable on varied decks.
 const DEFAULT_OFF: &[&str] = &[
     "TITLE_PRESENT",
     "ALL_CAPS",
     "BODY_TEXT_COLOR",
     "SLIDE_COUNT",
-    "GRID_H_SPACING",
-    "GRID_V_SPACING",
-    "GRID_ROW_TOP",
-    "GRID_COL_LEFT",
-    "COLUMN_LEFT_EDGE",
-    "COLUMN_TOP_EDGE",
-    "COLUMN_RIGHT_LEFT_EDGE",
 ];
 
 fn is_default_off(id: &str) -> bool {

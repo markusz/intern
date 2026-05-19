@@ -247,7 +247,7 @@ mod tests {
         assert_eq!(for_title_y.len(), 2);
         assert!(for_title_y.iter().all(|s| s.index != 1));
 
-        let for_other = slides_for_rule(&slides, &exclusions, "GRID_ROW_TOP");
+        let for_other = slides_for_rule(&slides, &exclusions, "TITLE_X_WIDTH");
         assert_eq!(for_other.len(), 3);
     }
 }

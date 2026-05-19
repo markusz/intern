@@ -218,7 +218,7 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(cfg.rule_threshold_px("TITLE_Y", 2), 5);
-        assert_eq!(cfg.rule_threshold_px("GRID_ROW_TOP", 2), 2);
+        assert_eq!(cfg.rule_threshold_px("TITLE_X_WIDTH", 2), 2);
     }
 
     #[test]

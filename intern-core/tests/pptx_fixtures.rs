@@ -116,192 +116,6 @@ fn reader_handles_slide_without_images() {
 }
 
 #[test]
-fn column_left_edge_fires_on_misaligned_left_column() {
-    let offset = 300 * 9_525u32;
-    let slide = SlideContent::new("two-col").with_shapes(vec![
-        shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
-        shape_at("L2", 457_200 + offset, 2_000_000, 1_500_000, 600_000),
-        shape_at("R1", 5_500_000, 1_000_000, 1_500_000, 600_000),
-        shape_at("R2", 5_500_000, 2_000_000, 1_500_000, 600_000),
-    ]);
-    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
-    let path = write_tmp(&bytes, "col_left_edge");
-
-    let v = violations_for(&path, "COLUMN_LEFT_EDGE");
-    cleanup(&path);
-    assert!(!v.is_empty(), "expected COLUMN_LEFT_EDGE violation");
-}
-
-#[test]
-fn column_left_edge_clean_on_aligned_columns() {
-    let slide = SlideContent::new("two-col clean").with_shapes(vec![
-        shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
-        shape_at("L2", 457_200, 2_000_000, 1_500_000, 600_000),
-        shape_at("R1", 5_500_000, 1_000_000, 1_500_000, 600_000),
-        shape_at("R2", 5_500_000, 2_000_000, 1_500_000, 600_000),
-    ]);
-    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
-    let path = write_tmp(&bytes, "col_left_edge_clean");
-
-    let v = violations_for(&path, "COLUMN_LEFT_EDGE");
-    cleanup(&path);
-    assert!(
-        v.is_empty(),
-        "COLUMN_LEFT_EDGE should be silent when columns are aligned"
-    );
-}
-
-#[test]
-fn fix_column_left_edge_round_trips() {
-    let offset = 300 * 9_525u32; // 300 px - well beyond threshold
-    let slide = SlideContent::new("two-col").with_shapes(vec![
-        shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
-        shape_at("L2", 457_200 + offset, 2_000_000, 1_500_000, 600_000),
-        shape_at("R1", 5_500_000, 1_000_000, 1_500_000, 600_000),
-        shape_at("R2", 5_500_000, 2_000_000, 1_500_000, 600_000),
-    ]);
-    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
-    let path = write_tmp(&bytes, "fix_col_left");
-
-    let fixes = fixes_for(&path);
-    assert!(!fixes.is_empty(), "expected fixable violations before fix");
-
-    apply_fixes(&path, &fixes).expect("apply_fixes failed");
-
-    let v = violations_for(&path, "COLUMN_LEFT_EDGE");
-    cleanup(&path);
-    assert!(
-        v.is_empty(),
-        "expected no COLUMN_LEFT_EDGE violations after fix: {v:#?}"
-    );
-}
-
-#[test]
-fn fix_grid_row_top_round_trips() {
-    // 2×2 grid right of midpoint so two-column detector falls through to grid.
-    let (cw, ch) = (2_000_000u32, 2_000_000u32);
-    let col0_x: u32 = 3_700_000;
-    let col1_x: u32 = col0_x + cw + 600_000;
-    let row0_y: u32 = 800_000;
-    let row1_y: u32 = 3_200_000;
-    let skew: u32 = 100_000; // ~10.5 px - beyond 2 px threshold
-
-    let slide = SlideContent::new("grid").with_shapes(vec![
-        shape_at("A1", col0_x, row0_y, cw, ch),
-        shape_at("A2", col1_x, row0_y + skew, cw, ch), // shifted down
-        shape_at("B1", col0_x, row1_y, cw, ch),
-        shape_at("B2", col1_x, row1_y, cw, ch),
-    ]);
-    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
-    let path = write_tmp(&bytes, "fix_grid_row");
-
-    let fixes = fixes_for(&path);
-    assert!(!fixes.is_empty(), "expected fixable violations before fix");
-
-    apply_fixes(&path, &fixes).expect("apply_fixes failed");
-
-    let v = violations_for(&path, "GRID_ROW_TOP");
-    cleanup(&path);
-    assert!(
-        v.is_empty(),
-        "expected no GRID_ROW_TOP violations after fix: {v:#?}"
-    );
-}
-
-#[test]
-fn fix_column_right_left_edge_round_trips() {
-    let slide = SlideContent::new("two-col").with_shapes(vec![
-        shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
-        shape_at("L2", 457_200, 2_000_000, 1_500_000, 600_000),
-        shape_at("R1", 5_500_000, 1_000_000, 1_500_000, 600_000),
-        shape_at(
-            "R2",
-            5_500_000 + 300 * 9_525u32,
-            2_000_000,
-            1_500_000,
-            600_000,
-        ),
-    ]);
-    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
-    let path = write_tmp(&bytes, "fix_col_right");
-
-    let fixes = fixes_for(&path);
-    assert!(!fixes.is_empty(), "expected fixable violations before fix");
-
-    apply_fixes(&path, &fixes).expect("apply_fixes failed");
-
-    let v = violations_for(&path, "COLUMN_RIGHT_LEFT_EDGE");
-    cleanup(&path);
-    assert!(
-        v.is_empty(),
-        "expected no COLUMN_RIGHT_LEFT_EDGE violations after fix: {v:#?}"
-    );
-}
-
-#[test]
-fn fix_column_top_edge_round_trips() {
-    let slide = SlideContent::new("two-col").with_shapes(vec![
-        shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
-        shape_at("L2", 457_200, 2_000_000, 1_500_000, 600_000),
-        // Right column starts 300px lower.
-        shape_at(
-            "R1",
-            5_500_000,
-            1_000_000 + 300 * 9_525u32,
-            1_500_000,
-            600_000,
-        ),
-        shape_at("R2", 5_500_000, 2_500_000, 1_500_000, 600_000),
-    ]);
-    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
-    let path = write_tmp(&bytes, "fix_col_top");
-
-    let fixes = fixes_for(&path);
-    assert!(!fixes.is_empty(), "expected fixable violations before fix");
-
-    apply_fixes(&path, &fixes).expect("apply_fixes failed");
-
-    let v = violations_for(&path, "COLUMN_TOP_EDGE");
-    cleanup(&path);
-    assert!(
-        v.is_empty(),
-        "expected no COLUMN_TOP_EDGE violations after fix: {v:#?}"
-    );
-}
-
-#[test]
-fn fix_grid_col_left_round_trips() {
-    // 2×2 grid right of midpoint.
-    let (cw, ch) = (2_000_000u32, 2_000_000u32);
-    let col0_x: u32 = 3_700_000;
-    let col1_x: u32 = col0_x + cw + 600_000;
-    let row0_y: u32 = 800_000;
-    let row1_y: u32 = 3_200_000;
-    let skew: u32 = 100_000;
-
-    let slide = SlideContent::new("grid").with_shapes(vec![
-        shape_at("A1", col0_x, row0_y, cw, ch),
-        shape_at("A2", col1_x, row0_y, cw, ch),
-        shape_at("B1", col0_x + skew, row1_y, cw, ch), // col 0 bottom shifted right
-        shape_at("B2", col1_x, row1_y, cw, ch),
-    ]);
-    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
-    let path = write_tmp(&bytes, "fix_grid_col");
-
-    let fixes = fixes_for(&path);
-    assert!(!fixes.is_empty(), "expected fixable violations before fix");
-
-    apply_fixes(&path, &fixes).expect("apply_fixes failed");
-
-    let v = violations_for(&path, "GRID_COL_LEFT");
-    cleanup(&path);
-    assert!(
-        v.is_empty(),
-        "expected no GRID_COL_LEFT violations after fix: {v:#?}"
-    );
-}
-
-#[test]
 fn no_violations_on_perfectly_aligned_deck() {
     let make_slide = |title: &str| {
         SlideContent::new(title).with_shapes(vec![
@@ -389,23 +203,23 @@ fn ignore_slide_level_suppresses_rule_for_whole_slide() {
     // ppt-rs never creates notes slides, so this exercises the "create from scratch" path.
     let slide = SlideContent::new("test").with_shapes(vec![
         shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
-        shape_at("L2", 457_200, 2_000_000, 1_500_000, 600_000),
         shape_at("R1", 5_500_000, 1_000_000, 1_500_000, 600_000),
-        shape_at("R2", 5_500_000, 2_000_000, 1_500_000, 600_000),
     ]);
     let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
     let path = write_tmp(&bytes, "ignore_slide_level");
 
-    append_notes_directive(&path, 0, None, "COLUMN_LEFT_EDGE")
+    append_notes_directive(&path, 0, None, "ELEMENT_OVERFLOW")
         .expect("append_notes_directive failed");
 
     let exclusions = slide_exclusions(&path).expect("slide_exclusions failed");
     cleanup(&path);
 
-    let ex = exclusions.get(&0).expect("no exclusion recorded for slide 0");
+    let ex = exclusions
+        .get(&0)
+        .expect("no exclusion recorded for slide 0");
     assert!(
-        ex.suppresses_rule_for_slide("COLUMN_LEFT_EDGE"),
-        "expected COLUMN_LEFT_EDGE to be suppressed for slide 0"
+        ex.suppresses_rule_for_slide("ELEMENT_OVERFLOW"),
+        "expected ELEMENT_OVERFLOW to be suppressed for slide 0"
     );
 }
 
@@ -424,7 +238,9 @@ fn ignore_element_level_suppresses_rule_for_that_element_only() {
     let exclusions = slide_exclusions(&path).expect("slide_exclusions failed");
     cleanup(&path);
 
-    let ex = exclusions.get(&0).expect("no exclusion recorded for slide 0");
+    let ex = exclusions
+        .get(&0)
+        .expect("no exclusion recorded for slide 0");
     assert!(
         ex.suppresses_rule_for_element(42, "ELEMENT_OVERFLOW"),
         "expected ELEMENT_OVERFLOW to be suppressed for element 42"

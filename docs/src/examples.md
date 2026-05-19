@@ -99,7 +99,7 @@ by adding a line to its **speaker notes**:
 
 ```text
 intern: disable                        # skip every rule on this slide
-intern: disable TITLE_Y, GRID_ROW_TOP  # skip only these rules
+intern: disable TITLE_Y, DUPLICATE_TITLE  # skip only these rules
 ```
 
 The slide is dropped before those rules run, so it skews no baselines either.
