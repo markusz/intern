@@ -49,21 +49,24 @@ brew install markusz/intern/intern
 
 ### Prebuilt binary
 
-Download the archive for your platform from the [latest release](https://github.com/markusz/intern/releases/latest), extract it, and move `intern` onto your `PATH`.
+No toolchain required. Find your target in the table, then run the install commands.
 
-| Platform | Archive |
+| Platform | Target |
 |---|---|
-| macOS (Apple Silicon) | `intern-aarch64-apple-darwin.tar.gz` |
-| macOS (Intel) | `intern-x86_64-apple-darwin.tar.gz` |
-| Linux (x86-64) | `intern-x86_64-unknown-linux-gnu.tar.gz` |
-| Windows (x86-64) | `intern-x86_64-pc-windows-msvc.zip` |
+| macOS (Apple Silicon) | `aarch64-apple-darwin` |
+| macOS (Intel) | `x86_64-apple-darwin` |
+| Linux (x86-64) | `x86_64-unknown-linux-gnu` |
+| Windows (x86-64) | `x86_64-pc-windows-msvc` |
 
-One-liner for macOS/Linux (swap in the archive from the table):
+**macOS / Linux** - set `TARGET` to your row, then run:
 
 ```sh
-curl -L https://github.com/markusz/intern/releases/latest/download/intern-aarch64-apple-darwin.tar.gz | tar xz
+TARGET=aarch64-apple-darwin   # ← replace with your target from the table
+curl -L https://github.com/markusz/intern/releases/latest/download/intern-$TARGET.tar.gz | tar xz
 sudo mv intern /usr/local/bin/
 ```
+
+**Windows** - download [`intern-x86_64-pc-windows-msvc.zip`](https://github.com/markusz/intern/releases/latest/download/intern-x86_64-pc-windows-msvc.zip), unzip, and add `intern.exe` to your `PATH`.
 
 ### Build from source
 
