@@ -4,9 +4,9 @@
 //! and then asserts on what violations (or lack thereof) the rules produce.
 
 use intern_core::model::Presentation;
-use intern_core::reader::read_presentation;
+use intern_core::reader::{read_presentation, slide_exclusions};
 use intern_core::rules::{Fix, Limits, RuleContext, all_rules};
-use intern_core::writer::apply_fixes;
+use intern_core::writer::{append_notes_directive, apply_fixes};
 use ppt_rs::generator::{Shape, ShapeType, SlideContent};
 use ppt_rs::generator::{SlideLayout, create_pptx_with_content};
 
@@ -381,5 +381,56 @@ fn double_space_detected() {
     assert!(
         !v.is_empty(),
         "expected DOUBLE_SPACE for shape text with a double space"
+    );
+}
+
+#[test]
+fn ignore_slide_level_suppresses_rule_for_whole_slide() {
+    // ppt-rs never creates notes slides, so this exercises the "create from scratch" path.
+    let slide = SlideContent::new("test").with_shapes(vec![
+        shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
+        shape_at("L2", 457_200, 2_000_000, 1_500_000, 600_000),
+        shape_at("R1", 5_500_000, 1_000_000, 1_500_000, 600_000),
+        shape_at("R2", 5_500_000, 2_000_000, 1_500_000, 600_000),
+    ]);
+    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
+    let path = write_tmp(&bytes, "ignore_slide_level");
+
+    append_notes_directive(&path, 0, None, "COLUMN_LEFT_EDGE")
+        .expect("append_notes_directive failed");
+
+    let exclusions = slide_exclusions(&path).expect("slide_exclusions failed");
+    cleanup(&path);
+
+    let ex = exclusions.get(&0).expect("no exclusion recorded for slide 0");
+    assert!(
+        ex.suppresses_rule_for_slide("COLUMN_LEFT_EDGE"),
+        "expected COLUMN_LEFT_EDGE to be suppressed for slide 0"
+    );
+}
+
+#[test]
+fn ignore_element_level_suppresses_rule_for_that_element_only() {
+    let slide = SlideContent::new("test").with_shapes(vec![
+        shape_at("L1", 457_200, 1_000_000, 1_500_000, 600_000),
+        shape_at("R1", 5_500_000, 1_000_000, 1_500_000, 600_000),
+    ]);
+    let bytes = create_pptx_with_content("Fixture", vec![slide]).unwrap();
+    let path = write_tmp(&bytes, "ignore_element_level");
+
+    append_notes_directive(&path, 0, Some(42), "ELEMENT_OVERFLOW")
+        .expect("append_notes_directive failed");
+
+    let exclusions = slide_exclusions(&path).expect("slide_exclusions failed");
+    cleanup(&path);
+
+    let ex = exclusions.get(&0).expect("no exclusion recorded for slide 0");
+    assert!(
+        ex.suppresses_rule_for_element(42, "ELEMENT_OVERFLOW"),
+        "expected ELEMENT_OVERFLOW to be suppressed for element 42"
+    );
+    assert!(
+        !ex.suppresses_rule_for_element(99, "ELEMENT_OVERFLOW"),
+        "suppression should not apply to a different element id"
     );
 }
